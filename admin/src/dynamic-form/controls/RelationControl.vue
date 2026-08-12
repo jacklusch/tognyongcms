@@ -25,8 +25,8 @@ async function loadCandidates() {
     // 加载分类并匹配当前值
     const { listCategories } = await import('../../api/category')
     const r = await listCategories()
-    const hit = r.items.find((c) => String(c.id) === props.modelValue)
-    categoryName.value = hit?.name ?? ''
+    const hit = r.all.find((c) => String(c.id) === props.modelValue)
+    categoryName.value = hit?.path ?? ''
     // T5：弹层高亮与已保存值同步（watch 同值跳过，不触发转发/关闭）
     selectedCat.value = props.modelValue
     return
