@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -83,4 +84,168 @@ func TestAuthorCategoryReadWrite(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Errorf("author POST /categories = %d, want 403: %s", w.Code, w.Body.String())
 	}
+}
+
+// 树形返回 + parent_id CRUD + 防环 + slug 自动生成/撞车后缀。
+func TestCategoriesTree(t *testing.T) {
+	e := newEnv(t)
+	tok := e.login(t)
+
+	type catResp struct {
+		Data struct {
+			Category struct {
+				ID   int64  `json:"id"`
+				Slug string `json:"slug"`
+			} `json:"category"`
+		} `json:"data"`
+	}
+	mk := func(body string) catResp {
+		t.Helper()
+		w := e.do(t, http.MethodPost, "/api/categories", body, tok)
+		if w.Code != http.StatusOK {
+			t.Fatalf("create %s = %d %s", body, w.Code, w.Body.String())
+		}
+		var r catResp
+		if err := json.Unmarshal(w.Body.Bytes(), &r); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	parent := mk(`{"name":"产品中心","slug":"product"}`)
+	child := mk(`{"name":"斩拌机","slug":"mixer","parent_id":` + strconv.FormatInt(parent.Data.Category.ID, 10) + `}`)
+	grand := mk(`{"name":"刀片","slug":"blade","parent_id":` + strconv.FormatInt(child.Data.Category.ID, 10) + `}`)
+
+	// 树形返回
+	w := e.do(t, http.MethodGet, "/api/categories", "", tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list = %d %s", w.Code, w.Body.String())
+	}
+	var list struct {
+		Data struct {
+			Items []catTreeNode `json:"items"`
+			All   []struct {
+				ID   int64  `json:"id"`
+				Path string `json:"path"`
+			} `json:"all"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	var root *catTreeNode
+	for i := range list.Data.Items {
+		if list.Data.Items[i].ID == parent.Data.Category.ID {
+			root = &list.Data.Items[i]
+			break
+		}
+	}
+	if root == nil {
+		t.Fatalf("树根未含 id %d: %+v", parent.Data.Category.ID, list.Data.Items)
+	}
+	if root.ID != parent.Data.Category.ID || root.ParentID != 0 {
+		t.Errorf("root = id %d parent %d, want id %d parent 0", root.ID, root.ParentID, parent.Data.Category.ID)
+	}
+	if len(root.Children) != 1 || root.Children[0].Name != "斩拌机" || root.Children[0].ID != child.Data.Category.ID || root.Children[0].ParentID != root.ID {
+		t.Errorf("child = %+v, want 斩拌机 id %d parent %d", root.Children, child.Data.Category.ID, root.ID)
+	}
+	g := root.Children[0].Children
+	if len(g) != 1 || g[0].Name != "刀片" || g[0].ID != grand.Data.Category.ID || g[0].ParentID != child.Data.Category.ID {
+		t.Errorf("grand = %+v, want 刀片 id %d parent %d", g, grand.Data.Category.ID, child.Data.Category.ID)
+	}
+
+	// content_count：seed 新闻节点有文章 → >0
+	for i := range list.Data.Items {
+		if list.Data.Items[i].Name == "新闻" && list.Data.Items[i].ContentCount <= 0 {
+			t.Errorf("新闻 content_count = %d, want > 0", list.Data.Items[i].ContentCount)
+		}
+	}
+
+	// all 带 path
+	idByPath := map[string]int64{}
+	for _, a := range list.Data.All {
+		idByPath[a.Path] = a.ID
+	}
+	if idByPath["产品中心"] != parent.Data.Category.ID {
+		t.Errorf(`all["产品中心"] = %d, want %d`, idByPath["产品中心"], parent.Data.Category.ID)
+	}
+	if idByPath["产品中心/斩拌机"] != child.Data.Category.ID {
+		t.Errorf(`all["产品中心/斩拌机"] = %d, want %d`, idByPath["产品中心/斩拌机"], child.Data.Category.ID)
+	}
+	if idByPath["产品中心/斩拌机/刀片"] != grand.Data.Category.ID {
+		t.Errorf(`all["产品中心/斩拌机/刀片"] = %d, want %d`, idByPath["产品中心/斩拌机/刀片"], grand.Data.Category.ID)
+	}
+
+	// 防环：上级分类选为自身或子孙 → 422
+	put := func(parentID int64, want int) {
+		t.Helper()
+		w := e.do(t, http.MethodPut, "/api/categories/"+strconv.FormatInt(parent.Data.Category.ID, 10),
+			fmt.Sprintf(`{"name":"产品中心","slug":"product","parent_id":%d}`, parentID), tok)
+		if w.Code != want {
+			t.Errorf("PUT parent_id=%d = %d, want %d: %s", parentID, w.Code, want, w.Body.String())
+		}
+	}
+	put(child.Data.Category.ID, http.StatusUnprocessableEntity)
+	put(parent.Data.Category.ID, http.StatusUnprocessableEntity)
+
+	// 改 parent 为另一合法分类（seed 新闻）→ 200 且读回正确；再还原顶级保持后续流程
+	newsID := idByPath["新闻"]
+	if w = e.do(t, http.MethodPut, "/api/categories/"+strconv.FormatInt(parent.Data.Category.ID, 10),
+		fmt.Sprintf(`{"name":"产品中心","slug":"product","parent_id":%d}`, newsID), tok); w.Code != http.StatusOK {
+		t.Fatalf("PUT 合法 parent = %d %s", w.Code, w.Body.String())
+	}
+	got, err := e.st.CategoryRepo().GetByID(context.Background(), parent.Data.Category.ID)
+	if err != nil || got.ParentID != newsID {
+		t.Errorf("改 parent 后 = parent %d, err %v, want %d", got.ParentID, err, newsID)
+	}
+	if w = e.do(t, http.MethodPut, "/api/categories/"+strconv.FormatInt(parent.Data.Category.ID, 10),
+		`{"name":"产品中心","slug":"product","parent_id":0}`, tok); w.Code != http.StatusOK {
+		t.Fatalf("PUT 还原 parent = %d %s", w.Code, w.Body.String())
+	}
+
+	// POST 不存在的 parent_id → 422
+	if w = e.do(t, http.MethodPost, "/api/categories", `{"name":"幽灵上级","slug":"ghost-parent","parent_id":999999}`, tok); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("POST 不存在的 parent = %d, want 422: %s", w.Code, w.Body.String())
+	}
+
+	// 删除有子分类 → 403
+	w = e.do(t, http.MethodDelete, "/api/categories/"+strconv.FormatInt(parent.Data.Category.ID, 10), "", tok)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("DELETE 有子分类 = %d, want 403: %s", w.Code, w.Body.String())
+	}
+	// 删孙 → 删子 → 删父 依次成功
+	for _, id := range []int64{grand.Data.Category.ID, child.Data.Category.ID, parent.Data.Category.ID} {
+		w = e.do(t, http.MethodDelete, "/api/categories/"+strconv.FormatInt(id, 10), "", tok)
+		if w.Code != http.StatusOK {
+			t.Errorf("DELETE %d = %d, want 200: %s", id, w.Code, w.Body.String())
+		}
+	}
+	// 删除无子分类但有内容 → 403（seed news 有文章）
+	if w = e.do(t, http.MethodDelete, "/api/categories/"+strconv.FormatInt(idByPath["新闻"], 10), "", tok); w.Code != http.StatusForbidden {
+		t.Errorf("DELETE 新闻 = %d, want 403: %s", w.Code, w.Body.String())
+	}
+
+	// slug 自动生成（按 slugify 规则："Mixer Pro"→"mixer-pro"）+ 撞车后缀 -2
+	r := mk(`{"name":"Mixer Pro"}`)
+	if r.Data.Category.Slug != "mixer-pro" {
+		t.Errorf("自动 slug = %q, want mixer-pro", r.Data.Category.Slug)
+	}
+	r2 := mk(`{"name":"Mixer Pro"}`)
+	if r2.Data.Category.Slug != "mixer-pro-2" {
+		t.Errorf("撞车 slug = %q, want mixer-pro-2", r2.Data.Category.Slug)
+	}
+	// 显式 slug 撞车 → 422（不静默加后缀）
+	if w = e.do(t, http.MethodPost, "/api/categories", `{"name":"显式撞车","slug":"mixer-pro"}`, tok); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("POST 显式撞车 slug = %d, want 422: %s", w.Code, w.Body.String())
+	}
+}
+
+// catTreeNode 树形返回结构（仅测试用）。
+type catTreeNode struct {
+	ID           int64         `json:"id"`
+	ParentID     int64         `json:"parent_id"`
+	Name         string        `json:"name"`
+	Slug         string        `json:"slug"`
+	Description  string        `json:"description"`
+	ContentCount int           `json:"content_count"`
+	Children     []catTreeNode `json:"children"`
 }
