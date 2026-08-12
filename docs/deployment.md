@@ -40,3 +40,12 @@
 4. 升级后新内容选分类存 id；旧内容替换后前台归档生效
 
 空库无此风险；新库 seed 直接建 relation 字段。
+
+## 分类子分类（树形）升级
+子分类功能为 `categories` 表新增 `parent_id` 列（0=顶级）。启动时自动迁移：
+- 首次启动自动执行 `ALTER TABLE categories ADD COLUMN parent_id INTEGER NOT NULL DEFAULT 0`（PRAGMA 探测，列已存在则跳过，幂等）
+- 既有顶级分类 `parent_id=0`，行为不变
+- 无需手动操作；升级后即可在后台分类管理中添加子分类（如 产品 → 斩拌机/香肠机/拌馅机）
+
+## seed 演示数据
+`./dulizhan seed` 幂等初始化：新闻/关于/产品三个顶级分类，产品下预建 斩拌机(chopper)/香肠机(sausage-machine)/拌馅机(mixer) 三个子分类，各带 1 篇双语文章，main 菜单含子分类下拉项。`DULIZHAN_SEED_NO_DOWNLOAD=1` 可跳过封面图网络下载（离线/测试用）。

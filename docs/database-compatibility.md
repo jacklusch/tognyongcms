@@ -58,5 +58,13 @@ dulizhan 默认 SQLite，存储层代码以 `?` 占位符与跨库 SQL 编写。
 | `LIKE` 搜索（title / slug） | SearchByTypeLang / CountSearch | 三库大小写语义不一致（见上节） | 文档化；跨库需规范化或按库选择操作符 |
 | `TEXT PRIMARY KEY`（settings.key、sessions.token） | migrate.go | SQLite/PG 合法、MySQL 非法；`key` 为 MySQL 保留字 | DDL 文档化；MySQL 用 `VARCHAR(255) PRIMARY KEY` 且反引号保留字 |
 
+## 子分类功能新增 SQL 兼容性（2026-08-12）
+| SQL | 位置 | 兼容性 | 处置 |
+|---|---|---|---|
+| `ALTER TABLE categories ADD COLUMN parent_id INTEGER NOT NULL DEFAULT 0` | migrate.go `migrateCategoriesParent` | SQLite 支持 `ADD COLUMN`；PG 支持；MySQL 8+ 支持、MySQL <8 不支持单语句 ADD COLUMN 带默认值之外的部分 | 文档化；当前 SQLite 用 PRAGMA 探测列存在才 ALTER（幂等）；PG/MySQL 接入时需按库探测（information_schema）后执行对应 DDL |
+| 递归 CTE `WITH RECURSIVE descs(id) AS (...)` | sqlite.go `Descendants` | SQLite 支持；PostgreSQL 支持；MySQL 8.0+ 支持、MariaDB 10.2+ 支持 | 文档化（需 MySQL 8+/MariaDB 10.2+；老版本需改迭代查询） |
+| `payload LIKE '%"category":"<id>"%'`（OR 多值） | sqlite.go `ListByCategories`/`CountByCategories` | 三库兼容 | 保持；多分类时 OR 扫描，量级小可接受 |
+| `idx_categories_parent` 索引 | migrate.go | 三库兼容（CREATE INDEX） | 保持 |
+
 ## 验证方式（未来）
 集成测试标签 `//go:build integration` + 各库连接串；当前无 Docker 环境，未实测。

@@ -30,6 +30,29 @@
 | GET | /api/content/:id/translations | content.read.<type> | 翻译列表 |
 | POST | /api/content/:id/translate | content.write | 建翻译 |
 
+## 分类
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| GET | /api/categories | content.read | 分类树 + 扁平路径（见下） |
+| POST | /api/categories | content_types.manage | 建分类（body 见下） |
+| PUT | /api/categories/:id | content_types.manage | 改分类（含上级分类，防环） |
+| DELETE | /api/categories/:id | content_types.manage | 删分类（有子分类或内容 → 403） |
+
+### GET /api/categories 响应
+`{items, all}`：
+- `items` —— 分类树，根节点含 `children` 递归嵌套；每节点：`{id, parent_id, name, slug, description, content_count, children}`
+- `all` —— 扁平路径，供前端级联选择器：`[{id, path}]`，`path` 为父链拼接（如 `产品/斩拌机`，顶级为 `产品`）
+
+### POST/PUT body
+`{name, slug?, description?, parent_id?}`
+- `slug` 可省略——空则自动由名称生成（小写连字符），撞车自动加 `-2/-3` 后缀；显式填写的 slug 撞车则 422"分类 slug 已存在"
+- `parent_id` 省略/0 表示顶级；非 0 须指向存在的分类
+- PUT 校验防环：上级分类不能是自身或其子孙（否则 422）
+- 中文名不填 slug 会 422（slugify 中文为空，需手动填 ASCII slug）
+
+### 删除规则
+先查子分类（`children` 非空）→ 403"该分类下仍有子分类，请先删除子分类"；再查内容数（>0）→ 403"该分类下仍有内容"。
+
 ## 媒体 / 设置 / 菜单 / 用户 / 角色 / 搜索 / 统计
 | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|
