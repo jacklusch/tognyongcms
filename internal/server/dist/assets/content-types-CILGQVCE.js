@@ -1,1 +1,0 @@
-import{s as e}from"./index-Cbumi6p9.js";const s=()=>e("/content-types"),p=t=>e("/content-types",{method:"POST",body:t}),c=(t,n)=>e(`/content-types/${t}`,{method:"PUT",body:n}),y=t=>e(`/content-types/${t}`,{method:"DELETE"});export{p as c,y as d,s as l,c as u};
