@@ -5,6 +5,11 @@
 {{template "nav" .}}
 <main class="container">
   <h1>{{t $.Lang "articles"}}</h1>
+  {{if .SubCategories}}
+  <div class="sub-categories">
+    {{range .SubCategories}}<a class="sub-cat" href="{{.URL}}">{{.Name}}</a>{{end}}
+  </div>
+  {{end}}
   <ul class="entry-list">
     {{range .Items}}
     <li class="entry-item">

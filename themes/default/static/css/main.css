@@ -23,3 +23,8 @@ body { margin:0; font-family: system-ui, -apple-system, sans-serif; color:var(--
 .entry-thumb { width: 120px; height: 80px; object-fit: cover; border-radius: 4px; }
 .entry-hero { width: 100%; max-height: 400px; object-fit: cover; border-radius: 8px; margin-bottom: 16px; }
 .entry-category { display: inline-block; background: #f0f0f0; padding: 2px 10px; border-radius: 12px; font-size: 13px; color: var(--fg); margin-bottom: 8px; }
+.entry-category a { color: var(--fg); text-decoration: none; }
+.entry-category a:hover { text-decoration: underline; }
+.sub-categories { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 1rem; }
+.sub-cat { display: inline-block; padding: 4px 12px; border: 1px solid #ddd; border-radius: 16px; color: var(--fg); text-decoration: none; font-size: 14px; }
+.sub-cat:hover { background: #f5f5f5; border-color: var(--fg); }

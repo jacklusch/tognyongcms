@@ -47,6 +47,14 @@ type Menu struct {
 	Items []MenuItem `json:"items"`
 }
 
+// CategoryInfo 子分类导航项。
+type CategoryInfo struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+	URL  string `json:"url"`
+}
+
 type Data struct {
 	Site     SiteInfo
 	Lang     string
@@ -60,7 +68,9 @@ type Data struct {
 	Meta     seo.Meta
 	Menus    []Menu `json:"menus"`
 
-	EntryCategory string `json:"entry_category"`
+	EntryCategory    string         `json:"entry_category"`
+	SubCategories    []CategoryInfo `json:"sub_categories"`
+	EntryCategoryURL string         `json:"entry_category_url"`
 }
 
 type Config struct {

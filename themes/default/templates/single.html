@@ -6,7 +6,7 @@
 <main class="container">
   <article class="entry">
     {{if .Entry.Fields.cover}}<img src="{{media .Entry.Fields.cover}}" class="entry-hero" alt="">{{end}}
-    {{if .EntryCategory}}<div class="entry-category">分类：{{.EntryCategory}}</div>{{end}}
+    {{if .EntryCategory}}<div class="entry-category">分类：{{if .EntryCategoryURL}}<a href="{{.EntryCategoryURL}}">{{.EntryCategory}}</a>{{else}}{{.EntryCategory}}{{end}}</div>{{end}}
     <h1>{{.Entry.Content.Title}}</h1>
     {{if .Entry.Content.PublishedAt}}<time class="entry-date">{{.Entry.Content.PublishedAt}}</time>{{end}}
     {{range $name, $field := .Entry.Fields}}

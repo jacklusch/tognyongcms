@@ -43,8 +43,8 @@ func (s *Server) handleFrontend(c *gin.Context) {
 		s.renderHome(c, th, lang, data)
 	case len(segs) == 1:
 		s.renderList(c, th, lang, segs[0], data)
-	case len(segs) == 2 && segs[0] == "category":
-		s.renderCategory(c, th, lang, segs[1], data)
+	case len(segs) >= 2 && segs[0] == "category":
+		s.renderCategory(c, th, lang, segs[1:], data)
 	case len(segs) == 2:
 		s.renderSingle(c, th, lang, segs[0], segs[1], data)
 	default:
@@ -92,8 +92,14 @@ func (s *Server) renderList(c *gin.Context, th *theme.Theme, lang, typeName stri
 	}
 }
 
-func (s *Server) renderCategory(c *gin.Context, th *theme.Theme, lang, slug string, data *theme.Data) {
-	cat, err := s.store.CategoryRepo().GetBySlug(c.Request.Context(), slug)
+func (s *Server) renderCategory(c *gin.Context, th *theme.Theme, lang string, pathSegs []string, data *theme.Data) {
+	if len(pathSegs) == 0 {
+		s.render404(c, th, lang)
+		return
+	}
+	ctx := c.Request.Context()
+	// 逐级解析路径：首段 GetBySlug，后续段在 ListChildren(prevID) 中按 slug 匹配
+	cat, err := s.store.CategoryRepo().GetBySlug(ctx, pathSegs[0])
 	if err != nil {
 		if errors.Is(err, errs.ErrNotFound) {
 			s.render404(c, th, lang)
@@ -102,22 +108,64 @@ func (s *Server) renderCategory(c *gin.Context, th *theme.Theme, lang, slug stri
 		}
 		return
 	}
+	for _, seg := range pathSegs[1:] {
+		children, err := s.store.CategoryRepo().ListChildren(ctx, cat.ID)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "查询失败: %v", err)
+			return
+		}
+		var next *store.Category
+		for i := range children {
+			if children[i].Slug == seg {
+				next = &children[i]
+				break
+			}
+		}
+		if next == nil {
+			s.render404(c, th, lang)
+			return
+		}
+		cat = *next
+	}
+	// 递归聚合：自身 + 全部子孙分类
+	ids := []int64{cat.ID}
+	descendants, err := s.store.CategoryRepo().Descendants(ctx, cat.ID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "查询失败: %v", err)
+		return
+	}
+	for _, d := range descendants {
+		ids = append(ids, d.ID)
+	}
 	// 聚合该分类下全部已发布内容（遍历类型）
 	var all []content.Entry
 	total := 0
-	types, err := s.content.AllTypes(c.Request.Context())
+	types, err := s.content.AllTypes(ctx)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "查询失败: %v", err)
 		return
 	}
 	for _, ct := range types {
-		items, n, err := s.content.ListPublishedByCategories(c.Request.Context(), ct.Name, lang, []int64{cat.ID}, 1, 1000)
+		items, n, err := s.content.ListPublishedByCategories(ctx, ct.Name, lang, ids, 1, 1000)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "查询失败: %v", err)
 			return
 		}
 		all = append(all, items...)
 		total += n
+	}
+	// 子分类导航：父链（顶级→当前分类）拼子分类 slug
+	parentChain := s.categoryChain(ctx, cat.ID)
+	children, err := s.store.CategoryRepo().ListChildren(ctx, cat.ID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "查询失败: %v", err)
+		return
+	}
+	for _, ch := range children {
+		data.SubCategories = append(data.SubCategories, theme.CategoryInfo{
+			ID: ch.ID, Name: ch.Name, Slug: ch.Slug,
+			URL: s.categoryURL(lang, append(append([]string{}, parentChain...), ch.Slug)),
+		})
 	}
 	data.Items, data.Total, data.Page, data.TypeName = all, total, 1, "category"
 	data.Meta = s.seo.BuildList(lang, cat.Name, 1)
@@ -138,17 +186,42 @@ func (s *Server) renderSingle(c *gin.Context, th *theme.Theme, lang, typeName, s
 	}
 	data.Entry = &e
 	data.Meta = s.seo.BuildEntry(lang, e)
-	// 解析分类：entry.Fields["category"] 是分类 id，查名称
+	// 解析分类：entry.Fields["category"] 是分类 id，查名称并沿父链构造归档 URL
 	if catIDStr, ok := e.Fields["category"].(string); ok && catIDStr != "" {
 		if id, err := strconv.ParseInt(catIDStr, 10, 64); err == nil {
 			if cat, err := s.store.CategoryRepo().GetByID(c.Request.Context(), id); err == nil {
 				data.EntryCategory = cat.Name
+				data.EntryCategoryURL = s.categoryURL(lang, s.categoryChain(c.Request.Context(), cat.ID))
 			}
 		}
 	}
 	if err := th.Render(c.Writer, th.TemplateFor(typeName), data); err != nil {
 		c.String(http.StatusInternalServerError, "渲染失败: %v", err)
 	}
+}
+
+// categoryChain 返回分类自顶级到自身的 slug 链（自顶向下），任一级查询失败返回 nil。
+func (s *Server) categoryChain(ctx context.Context, id int64) []string {
+	var slugs []string
+	cur := id
+	for cur != 0 {
+		cat, err := s.store.CategoryRepo().GetByID(ctx, cur)
+		if err != nil {
+			return nil
+		}
+		slugs = append(slugs, cat.Slug)
+		cur = cat.ParentID
+	}
+	for i, j := 0, len(slugs)-1; i < j; i, j = i+1, j-1 {
+		slugs[i], slugs[j] = slugs[j], slugs[i]
+	}
+	return slugs
+}
+
+// categoryURL 构造带语言前缀的分类归档 URL：/category/<slug1>/<slug2>/...
+func (s *Server) categoryURL(lang string, chain []string) string {
+	rest := "/category/" + strings.Join(chain, "/")
+	return s.i18n.URLPath(lang, rest)
 }
 
 func (s *Server) render404(c *gin.Context, th *theme.Theme, lang string) {

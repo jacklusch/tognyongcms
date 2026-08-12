@@ -312,6 +312,76 @@ func TestFrontendCategoryPage(t *testing.T) {
 	}
 }
 
+// Task3：任意段路径 + 递归聚合 + 子分类导航 + EntryCategoryURL
+func TestFrontendSubcategories(t *testing.T) {
+	srv := buildTestServer(t, "../../themes")
+	srv.cfg.Site.Theme = "default"
+	ctx := context.Background()
+	// 用 seed 已建的 产品(products) 顶级分类，挂 斩拌机(chopper) 子分类
+	products, err := srv.store.CategoryRepo().GetBySlug(ctx, "products")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chopper := &store.Category{Name: "斩拌机", Slug: "chopper", ParentID: products.ID}
+	if err := srv.store.CategoryRepo().Create(ctx, chopper); err != nil {
+		t.Fatal(err)
+	}
+	// 一篇 article 归 chopper
+	e, err := srv.content.Create(ctx, "article", "zh", map[string]any{
+		"title": "斩拌机文章", "slug": "chopper-post",
+		"content": "<p>正文</p>", "category": strconv.FormatInt(chopper.ID, 10),
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.content.SetStatus(ctx, e.Content.ID, "published"); err != nil {
+		t.Fatal(err)
+	}
+	// 子分类归档页：GET /category/products/chopper → 200，含 chopper 文章标题
+	code, body := get(t, srv, "/category/products/chopper")
+	if code != http.StatusOK {
+		t.Fatalf("/category/products/chopper = %d", code)
+	}
+	if !strings.Contains(body, "斩拌机文章") {
+		t.Errorf("子分类归档页未渲染文章: %s", body)
+	}
+	// 父分类聚合（子孙）：GET /category/products → 200，聚合显示 chopper 文章
+	code, body = get(t, srv, "/category/products")
+	if code != http.StatusOK {
+		t.Fatalf("/category/products = %d", code)
+	}
+	if !strings.Contains(body, "斩拌机文章") {
+		t.Errorf("父分类聚合未显示子孙分类文章: %s", body)
+	}
+	if !strings.Contains(body, `class="sub-cat"`) {
+		t.Errorf("父分类未渲染子分类导航: %s", body)
+	}
+	if !strings.Contains(body, `href="/category/products/chopper"`) {
+		t.Errorf("子分类导航 URL 错误: %s", body)
+	}
+	// 超深路径 → 404
+	code, _ = get(t, srv, "/category/products/chopper/x/y")
+	if code != http.StatusNotFound {
+		t.Errorf("/category/products/chopper/x/y = %d, want 404", code)
+	}
+	// 未知顶级 → 404
+	code, _ = get(t, srv, "/category/nope")
+	if code != http.StatusNotFound {
+		t.Errorf("/category/nope = %d, want 404", code)
+	}
+	// 详情页：含 EntryCategory 与 /category/products/chopper 链接
+	code, body = get(t, srv, "/article/chopper-post")
+	if code != http.StatusOK {
+		t.Fatalf("/article/chopper-post = %d", code)
+	}
+	if !strings.Contains(body, "斩拌机") {
+		t.Errorf("详情页缺分类名: %s", body)
+	}
+	if !strings.Contains(body, `href="/category/products/chopper"`) {
+		t.Errorf("详情页缺 EntryCategoryURL: %s", body)
+	}
+}
+
 // I2：归档内容超过 defaultPerPage(10) 时不得渲染分页器（旧实现生成指向 404 的 /category/page/N 死链）。
 func TestFrontendCategoryPageNoPager(t *testing.T) {
 	srv := buildTestServer(t, "../../themes")
