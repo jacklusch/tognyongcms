@@ -2,6 +2,8 @@ package seed
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"dulizhan/internal/auth"
 	"dulizhan/internal/content"
 	"dulizhan/internal/schema"
+	"dulizhan/internal/store"
 	"dulizhan/internal/store/sqlite"
 )
 
@@ -122,9 +125,9 @@ func TestSeedDemoData(t *testing.T) {
 	if err := Run(ctx, st, svc, mock); err != nil {
 		t.Fatal(err)
 	}
-	// 分类建了 3 个
+	// 分类建了 6 个（3 顶级 + products 下 3 子分类）
 	cats, err := st.CategoryRepo().List(ctx)
-	if err != nil || len(cats) != 3 {
+	if err != nil || len(cats) != 6 {
 		t.Errorf("分类数 = %d, %v", len(cats), err)
 	}
 	// 每分类双语文章存在（zh 已发布 + en 同组翻译）
@@ -154,6 +157,65 @@ func TestSeedDemoData(t *testing.T) {
 	if err != nil || len(menus) == 0 {
 		t.Errorf("zh main 菜单缺失: %v", err)
 	}
+	// 产品下子分类存在：斩拌机(chopper)、香肠机(sausage-machine)、拌馅机(mixer)，ParentID == 产品id
+	prod, err := st.CategoryRepo().GetBySlug(ctx, "products")
+	if err != nil {
+		t.Fatalf("products 分类缺失: %v", err)
+	}
+	for _, slug := range []string{"chopper", "sausage-machine", "mixer"} {
+		sc, err := st.CategoryRepo().GetBySlug(ctx, slug)
+		if err != nil {
+			t.Errorf("子分类 %s 缺失: %v", slug, err)
+			continue
+		}
+		if sc.ParentID != prod.ID {
+			t.Errorf("子分类 %s ParentID = %d, want %d", slug, sc.ParentID, prod.ID)
+		}
+	}
+	// 每子分类 1 篇双语文章（zh 已发布 + en 同组翻译），category == 子分类 id
+	for _, slug := range []string{"chopper-1", "sausage-machine-1", "mixer-1"} {
+		zh, err := svc.GetPublishedBySlugLang(ctx, "article", slug, "zh")
+		if err != nil {
+			t.Errorf("zh 子分类文章 %s: %v", slug, err)
+			continue
+		}
+		en, err := svc.GetPublishedBySlugLang(ctx, "article", slug+"-en", "en")
+		if err != nil {
+			t.Errorf("en 子分类翻译 %s: %v", slug, err)
+			continue
+		}
+		if zh.Content.ContentID != en.Content.ContentID {
+			t.Errorf("子分类 zh/en 应同翻译组: %q vs %q", zh.Content.ContentID, en.Content.ContentID)
+		}
+		sub, err := st.CategoryRepo().GetBySlug(ctx, strings.TrimSuffix(slug, "-1"))
+		if err != nil {
+			t.Errorf("子分类 %s 缺失: %v", slug, err)
+			continue
+		}
+		if zh.Fields["category"] != fmt.Sprintf("%d", sub.ID) {
+			t.Errorf("zh %s category = %q, want %d", slug, zh.Fields["category"], sub.ID)
+		}
+	}
+	// main 菜单（zh/en）含子分类项 /category/products/chopper
+	for _, lang := range []string{"zh", "en"} {
+		mMenus, err := st.MenuRepo().ListByLang(ctx, lang)
+		if err != nil {
+			t.Errorf("main 菜单(%s) 缺失: %v", lang, err)
+			continue
+		}
+		var items []store.MenuItem
+		for _, m := range mMenus {
+			if m.Name == "main" {
+				json.Unmarshal([]byte(m.Items), &items)
+			}
+		}
+		if !menuHasChild(items, "/category/products/chopper") {
+			t.Errorf("main 菜单(%s) 缺子分类项 /category/products/chopper", lang)
+		}
+		if !menuHasChild(items, "/category/products/mixer") {
+			t.Errorf("main 菜单(%s) 缺子分类项 /category/products/mixer", lang)
+		}
+	}
 	// hello-zh/en 归入 news 分类
 	for _, h := range []struct{ slug, lang string }{{"hello-zh", "zh"}, {"hello-en", "en"}} {
 		e, err := svc.GetPublishedBySlugLang(ctx, "article", h.slug, h.lang)
@@ -170,7 +232,19 @@ func TestSeedDemoData(t *testing.T) {
 		t.Errorf("二次 Run 应幂等: %v", err)
 	}
 	cats2, _ := st.CategoryRepo().List(ctx)
-	if len(cats2) != 3 {
-		t.Errorf("幂等后分类数 = %d, want 3", len(cats2))
+	if len(cats2) != 6 {
+		t.Errorf("幂等后分类数 = %d, want 6", len(cats2))
 	}
+}
+
+// menuHasChild 判断菜单项 children 中是否含指定 URL。
+func menuHasChild(items []store.MenuItem, url string) bool {
+	for _, it := range items {
+		for _, ch := range it.Children {
+			if ch.URL == url {
+				return true
+			}
+		}
+	}
+	return false
 }

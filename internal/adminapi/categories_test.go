@@ -112,7 +112,7 @@ func TestCategoriesTree(t *testing.T) {
 		return r
 	}
 	parent := mk(`{"name":"产品中心","slug":"product"}`)
-	child := mk(`{"name":"斩拌机","slug":"mixer","parent_id":` + strconv.FormatInt(parent.Data.Category.ID, 10) + `}`)
+	child := mk(`{"name":"斩拌机","slug":"emulsifier","parent_id":` + strconv.FormatInt(parent.Data.Category.ID, 10) + `}`)
 	grand := mk(`{"name":"刀片","slug":"blade","parent_id":` + strconv.FormatInt(child.Data.Category.ID, 10) + `}`)
 
 	// 树形返回

@@ -98,6 +98,24 @@ func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med
 		catIDs[c.Slug] = cat.ID
 	}
 
+	// 子分类（幂等：GetBySlug 已存在跳过），ParentID = 父分类 id
+	subCategories := map[string][]struct{ Name, Slug string }{
+		"products": {{"斩拌机", "chopper"}, {"香肠机", "sausage-machine"}, {"拌馅机", "mixer"}},
+	}
+	for parentSlug, subs := range subCategories {
+		for _, sc := range subs {
+			if existing, err := st.CategoryRepo().GetBySlug(ctx, sc.Slug); err == nil {
+				catIDs[sc.Slug] = existing.ID
+				continue
+			}
+			cat := &store.Category{Name: sc.Name, Slug: sc.Slug, ParentID: catIDs[parentSlug]}
+			if err := st.CategoryRepo().Create(ctx, cat); err != nil {
+				return fmt.Errorf("创建子分类 %s: %w", sc.Slug, err)
+			}
+			catIDs[sc.Slug] = cat.ID
+		}
+	}
+
 	// 演示文章（每分类 2-3 篇，zh 先建 + en 同组翻译）
 	type demoArticle struct {
 		Slug    string
@@ -117,6 +135,15 @@ func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med
 		"products": {
 			{"products-1", "旗舰产品一览", "<p>我们的旗舰产品系列涵盖多种场景，满足不同需求。</p>", "Flagship Products Overview", "<p>Our flagship product line covers multiple scenarios.</p>"},
 			{"products-2", "新品评测", "<p>第三方评测对新产品给出了高度评价。</p>", "New Product Review", "<p>Third-party reviewers gave high marks to our new product.</p>"},
+		},
+		"chopper": {
+			{"chopper-1", "斩拌机系列", "<p>高效斩拌，肉质细腻，适用于多种肉馅加工。</p>", "Chopper Series", "<p>Efficient chopping for fine, tender meat mixtures.</p>"},
+		},
+		"sausage-machine": {
+			{"sausage-machine-1", "香肠机系列", "<p>自动灌肠成型，产能稳定，操作简便。</p>", "Sausage Machine Series", "<p>Automatic filling and forming with stable output.</p>"},
+		},
+		"mixer": {
+			{"mixer-1", "拌馅机系列", "<p>搅拌均匀不伤馅料，适配多种配方。</p>", "Mixer Series", "<p>Even mixing that preserves ingredients for various recipes.</p>"},
 		},
 	}
 	for catSlug, arts := range demoContent {
@@ -197,6 +224,11 @@ func seedMainMenu(ctx context.Context, st store.Store, lang string) error {
 		"about":    {"关于", "About"},
 		"products": {"产品", "Products"},
 	}
+	subLabels := map[string]struct{ Zh, En string }{
+		"chopper":         {"斩拌机", "Chopper"},
+		"sausage-machine": {"香肠机", "Sausage Machine"},
+		"mixer":           {"拌馅机", "Mixer"},
+	}
 	home := "首页"
 	if lang == "en" {
 		home = "Home"
@@ -207,7 +239,17 @@ func seedMainMenu(ctx context.Context, st store.Store, lang string) error {
 		if lang == "en" {
 			label = labels[slug].En
 		}
-		items = append(items, store.MenuItem{Label: label, Type: "custom", URL: "/category/" + slug})
+		it := store.MenuItem{Label: label, Type: "custom", URL: "/category/" + slug}
+		if slug == "products" {
+			for _, sub := range []string{"chopper", "sausage-machine", "mixer"} {
+				subLabel := subLabels[sub].Zh
+				if lang == "en" {
+					subLabel = subLabels[sub].En
+				}
+				it.Children = append(it.Children, store.MenuItem{Label: subLabel, Type: "custom", URL: "/category/" + slug + "/" + sub})
+			}
+		}
+		items = append(items, it)
 	}
 	itemsJSON, _ := json.Marshal(items)
 	return st.MenuRepo().Create(ctx, &store.Menu{Name: "main", Lang: lang, Items: string(itemsJSON)})

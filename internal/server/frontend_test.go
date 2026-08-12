@@ -317,14 +317,17 @@ func TestFrontendSubcategories(t *testing.T) {
 	srv := buildTestServer(t, "../../themes")
 	srv.cfg.Site.Theme = "default"
 	ctx := context.Background()
-	// 用 seed 已建的 产品(products) 顶级分类，挂 斩拌机(chopper) 子分类
+	// 用 seed 已建的 产品(products) 顶级分类 与 斩拌机(chopper) 子分类
 	products, err := srv.store.CategoryRepo().GetBySlug(ctx, "products")
 	if err != nil {
 		t.Fatal(err)
 	}
-	chopper := &store.Category{Name: "斩拌机", Slug: "chopper", ParentID: products.ID}
-	if err := srv.store.CategoryRepo().Create(ctx, chopper); err != nil {
+	chopper, err := srv.store.CategoryRepo().GetBySlug(ctx, "chopper")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if chopper.ParentID != products.ID {
+		t.Fatalf("seed chopper ParentID = %d, want %d", chopper.ParentID, products.ID)
 	}
 	// 一篇 article 归 chopper
 	e, err := srv.content.Create(ctx, "article", "zh", map[string]any{
