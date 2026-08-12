@@ -1,0 +1,1 @@
+import{s}from"./index-Cbumi6p9.js";const l=()=>s("/roles"),r=()=>s("/roles/perms"),a=e=>s("/roles",{method:"POST",body:e}),c=(e,o)=>s(`/roles/${e}`,{method:"PUT",body:o}),m=e=>s(`/roles/${e}`,{method:"DELETE"});export{r as a,a as c,m as d,l,c as u};

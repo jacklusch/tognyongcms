@@ -1,0 +1,20 @@
+# Go 构建产物
+dulizhan.exe
+*.exe
+
+# 本地数据库
+*.db
+*.db-journal
+data/
+
+# 前端依赖与构建产物
+admin/node_modules/
+admin/dist/
+internal/server/dist/assets/*.map
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 本地配置（含密钥）
+config.yaml

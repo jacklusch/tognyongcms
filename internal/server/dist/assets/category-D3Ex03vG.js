@@ -1,0 +1,1 @@
+import{s as t}from"./index-Cbumi6p9.js";const s=()=>t("/categories"),a=e=>t("/categories",{method:"POST",body:e}),c=(e,o)=>t(`/categories/${e}`,{method:"PUT",body:o}),g=e=>t(`/categories/${e}`,{method:"DELETE"});export{a as createCategory,g as deleteCategory,s as listCategories,c as updateCategory};

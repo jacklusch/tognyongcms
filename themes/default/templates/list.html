@@ -1,0 +1,26 @@
+{{define "head"}}
+<link rel="stylesheet" href="{{asset "/css/main.css"}}">
+{{end}}
+{{define "body"}}
+{{template "nav" .}}
+<main class="container">
+  <h1>{{t $.Lang "articles"}}</h1>
+  <ul class="entry-list">
+    {{range .Items}}
+    <li class="entry-item">
+      {{if .Fields.cover}}<img src="{{media .Fields.cover}}" class="entry-thumb" alt="">{{end}}
+      <a href="{{url $.Lang .}}">{{.Content.Title}}</a>
+      {{if .Content.PublishedAt}}<time>{{.Content.PublishedAt}}</time>{{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{if ne $.TypeName "category"}}
+  <nav class="pager">
+    {{range pages $.Total $.PerPage}}
+      {{if eq . $.Page}}<span class="current">{{.}}</span>{{else}}<a href="{{pagerURL $ .}}">{{.}}</a>{{end}}
+    {{end}}
+  </nav>
+  {{end}}
+</main>
+{{template "footer" .}}
+{{end}}

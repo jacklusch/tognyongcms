@@ -1,0 +1,19 @@
+/// <reference types="vitest" />
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+
+export default defineConfig({
+  plugins: [vue()],
+  base: '/admin/',
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': 'http://localhost:8080',
+      '/media': 'http://localhost:8080',
+      '/themes': 'http://localhost:8080',
+    },
+  },
+  test: {
+    environment: 'jsdom',
+  },
+})

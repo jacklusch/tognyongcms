@@ -1,0 +1,19 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Meta.Title}}</title>
+{{if .Meta.Description}}<meta name="description" content="{{.Meta.Description}}">{{end}}
+{{range .Meta.HrefLangs}}<link rel="alternate" hreflang="{{.Lang}}" href="{{.URL}}">{{end}}
+<link rel="canonical" href="{{.Meta.Canonical}}">
+{{range $k, $v := .Meta.OGTags}}<meta property="og:{{$k}}" content="{{$v}}">{{end}}
+{{if .Meta.JSONLDScript}}{{.Meta.JSONLDScript}}{{end}}
+{{template "head" .}}
+</head>
+<body>
+{{template "body" .}}
+</body>
+</html>
+{{end}}

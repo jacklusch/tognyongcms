@@ -1,0 +1,25 @@
+# Dulizhan CMS 配置示例。复制为 config.yaml 后按需修改。
+server:
+  addr: ":8080"
+  data_dir: "./data"
+  debug: false              # true 时主题热重载 + DEBUG 日志
+database:
+  driver: "sqlite"          # sqlite（当前支持）；PG/MySQL 见 docs/database-compatibility.md
+  dsn: "dulizhan.db"
+site:
+  name: "Dulizhan CMS"
+  url: "http://localhost:8080"
+  description: "一个通用的 Go CMS"
+  default_lang: "zh"
+  languages: ["zh", "en"]
+  theme: "default"
+  themes_dir: "./themes"
+media:
+  driver: "local"           # local | s3
+  # s3:
+  #   endpoint: ""                    # 自定义端点（MinIO/OSS），AWS 可留空
+  #   region: "cn-hangzhou"
+  #   bucket: "my-bucket"
+  #   access_key: "xxx"
+  #   secret_key: "yyy"
+  #   public_base_url: ""             # 媒体公开 URL 前缀（CDN/自定义域名）

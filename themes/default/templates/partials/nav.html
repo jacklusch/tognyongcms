@@ -1,0 +1,24 @@
+{{define "nav"}}
+<nav class="site-nav">
+  <a class="nav-brand" href="{{home $.Lang}}">{{.Site.Name}}</a>
+  <div class="nav-links">
+    {{$main := (firstMenu $)}}
+    {{if $main}}
+      {{range $main}}
+        {{if .Children}}
+          <div class="nav-item has-children">
+            <a href="{{.URL}}">{{.Label}}</a>
+            <div class="dropdown">
+              {{range .Children}}<a href="{{.URL}}">{{.Label}}</a>{{end}}
+            </div>
+          </div>
+        {{else}}
+          <a href="{{.URL}}">{{.Label}}</a>
+        {{end}}
+      {{end}}
+    {{else}}
+      <a href="{{typeURL $.Lang "article"}}">{{t $.Lang "articles"}}</a>
+    {{end}}
+  </div>
+</nav>
+{{end}}
