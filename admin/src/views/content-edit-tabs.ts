@@ -11,11 +11,11 @@ export function resolveSwitchTab(
   byLang: Record<string, TabEntry>,
   lang: string,
   shared: Record<string, unknown>,
-  current: Record<string, unknown>,
 ): TabSwitchResult {
   const entry = byLang[lang]
   if (entry) {
     return { form: { ...shared, ...entry.fields }, needCreate: false }
   }
-  return { form: { ...shared, ...current }, needCreate: true }
+  // 目标语言尚无翻译：表单从共享字段（非可翻译）开始，不带当前语言已填内容
+  return { form: { ...shared }, needCreate: true }
 }

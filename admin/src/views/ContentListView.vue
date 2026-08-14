@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listContent, deleteContent, type ContentEntry } from '../api/content'
 import { listContentTypes } from '../api/content-types'
+import { listCategories, type CategoryItem } from '../api/category'
 import { searchContent } from '../api/search'
 import { fetchMeta, type MetaData } from '../api/meta'
 import { useAuthStore } from '../stores/auth'
@@ -15,7 +16,23 @@ const types = ref<{ name: string; label: string }[]>([])
 const typeFilter = ref('')
 const langFilter = ref('')
 const statusFilter = ref('')
+const categoryFilter = ref<number | undefined>(undefined)
+const categories = ref<CategoryItem[]>([])
 const keyword = ref('')
+
+// 扁平化分类树（含子分类）为下拉选项
+const categoryOptions = computed(() => {
+  const out: { label: string; value: number }[] = []
+  const walk = (list: CategoryItem[], prefix = '') => {
+    for (const c of list) {
+      const label = prefix ? `${prefix} / ${c.name}` : c.name
+      out.push({ label, value: c.id })
+      walk(c.children ?? [], label)
+    }
+  }
+  walk(categories.value)
+  return out
+})
 const items = ref<ContentEntry[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -33,11 +50,11 @@ async function load() {
   loading.value = true
   try {
     if (keyword.value) {
-      const r = await searchContent({ type: typeFilter.value, lang: langFilter.value, q: keyword.value, page: page.value })
+      const r = await searchContent({ type: typeFilter.value, lang: langFilter.value, q: keyword.value, category: categoryFilter.value, page: page.value })
       items.value = r.items
       total.value = r.total
     } else {
-      const r = await listContent({ type: typeFilter.value, lang: langFilter.value, status: statusFilter.value || undefined, page: page.value, perPage })
+      const r = await listContent({ type: typeFilter.value, lang: langFilter.value, status: statusFilter.value || undefined, category: categoryFilter.value, page: page.value, perPage })
       items.value = r.items
       total.value = r.total
     }
@@ -49,13 +66,15 @@ async function load() {
 onMounted(async () => {
   meta.value = await fetchMeta()
   langFilter.value = meta.value.default_lang
+  categories.value = (await listCategories(langFilter.value)).items
   const tr = await listContentTypes()
   types.value = tr.items.filter(t => auth.hasPerm(`content.read.${t.name}`))
   typeFilter.value = types.value[0]?.name ?? ''
   await load()
 })
 
-watch([typeFilter, langFilter, statusFilter, page], () => load())
+watch([typeFilter, langFilter, statusFilter, categoryFilter, page], () => load())
+watch(langFilter, () => listCategories(langFilter.value).then(r => categories.value = r.items))
 
 function onSearchInput() {
   if (searchTimer.value) window.clearTimeout(searchTimer.value)
@@ -113,6 +132,11 @@ function statusTag(s: string) {
           <el-option label="已发布" value="published" />
         </el-select>
       </el-form-item>
+      <el-form-item label="分类">
+        <el-select v-model="categoryFilter" style="width: 180px" clearable placeholder="全部">
+          <el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
+      </el-form-item>
       <el-form-item>
         <el-input v-model="keyword" placeholder="搜索标题/Slug" clearable @input="onSearchInput" />
       </el-form-item>
@@ -124,6 +148,7 @@ function statusTag(s: string) {
     <el-table :data="items" v-loading="loading">
       <el-table-column prop="content.title" label="标题" />
       <el-table-column prop="content.slug" label="Slug" />
+      <el-table-column prop="category_name" label="分类" width="140" />
       <el-table-column label="状态" width="100">
         <template #default="{ row }"><el-tag :type="statusTag(row.content.status)">{{ row.content.status }}</el-tag></template>
       </el-table-column>

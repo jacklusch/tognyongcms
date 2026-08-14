@@ -2,8 +2,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listCategories, createCategory, updateCategory, deleteCategory, buildCategoryOptions, findParentPathId, type CategoryItem, type CategoryPath } from '../api/category'
+import { fetchMeta, type MetaData } from '../api/meta'
 import { categoryDeleteGuard } from './categories-logic'
 
+const meta = ref<MetaData | null>(null)
+const langFilter = ref('')
 const items = ref<CategoryItem[]>([])
 const all = ref<CategoryPath[]>([])
 const dialogVisible = ref(false)
@@ -18,12 +21,16 @@ function slugify(name: string): string {
 }
 
 async function load() {
-  const r = await listCategories()
+  const r = await listCategories(langFilter.value || undefined)
   items.value = r.items
   all.value = r.all
 }
 
-onMounted(load)
+onMounted(async () => {
+  meta.value = await fetchMeta()
+  langFilter.value = meta.value.default_lang
+  await load()
+})
 
 function openCreate(row?: CategoryItem) {
   editing.value = null
@@ -84,12 +91,20 @@ async function remove(c: CategoryItem) {
 <template>
   <div>
     <h2>分类管理</h2>
+    <el-form inline style="margin-top: 8px">
+      <el-form-item label="语言">
+        <el-select v-model="langFilter" style="width: 120px" @change="load">
+          <el-option v-for="l in meta?.languages ?? []" :key="l" :label="l" :value="l" />
+        </el-select>
+      </el-form-item>
+    </el-form>
     <el-button type="primary" @click="openCreate()">新建分类</el-button>
     <el-table :data="items" row-key="id" :tree-props="{ children: 'children' }" style="margin-top: 16px">
       <el-table-column prop="name" label="名称" width="200" />
       <el-table-column prop="slug" label="Slug" width="160" />
       <el-table-column prop="description" label="描述" />
       <el-table-column prop="content_count" label="内容数" width="90" />
+      <el-table-column prop="total_content_count" label="总内容数" width="90" />
       <el-table-column label="操作" width="240">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>

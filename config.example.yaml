@@ -14,6 +14,8 @@ site:
   languages: ["zh", "en"]
   theme: "default"
   themes_dir: "./themes"
+  # home_products_category: "products"   # 首页"产品中心"取该分类（含子分类）内容
+  # home_news_category: "news"           # 首页"新闻动态"取该分类（含子分类）内容
 media:
   driver: "local"           # local | s3
   # s3:
@@ -23,3 +25,12 @@ media:
   #   access_key: "xxx"
   #   secret_key: "yyy"
   #   public_base_url: ""             # 媒体公开 URL 前缀（CDN/自定义域名）
+
+# translate:
+#   enabled: false                 # true 时保存源语言内容自动翻译生成目标语言
+#   provider: "openai"             # openai 兼容接口
+#   api_key: ""                    # env: DULIZHAN_TRANSLATE_API_KEY
+#   base_url: "https://api.openai.com/v1"
+#   model: "gpt-4o-mini"
+#   source_lang: "zh"              # 触发翻译的源语言（默认站点默认语言）
+#   target_lang: "en"              # 自动生成的目标语言

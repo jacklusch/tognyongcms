@@ -7,16 +7,14 @@ const byLang = {
 const shared = { slug: 'hello', type: 'article' }
 
 describe('resolveSwitchTab', () => {
-  it('切到未翻译语言置 needCreate=true 并保留当前语言可翻译字段', () => {
-    const current = { title: '中文草稿', slug: 'unused' }
-    const r = resolveSwitchTab(byLang, 'zh', shared, current)
+  it('切到未翻译语言置 needCreate=true，表单从空白开始（不带当前语言内容）', () => {
+    const r = resolveSwitchTab(byLang, 'zh', shared)
     expect(r.needCreate).toBe(true)
-    expect(r.form).toEqual({ ...shared, title: '中文草稿', slug: 'unused' })
+    expect(r.form).toEqual({ ...shared })
   })
 
   it('切回已翻译语言复位 needCreate=false 并载入该语言字段', () => {
-    const current = { title: '中文草稿' }
-    const r = resolveSwitchTab(byLang, 'en', shared, current)
+    const r = resolveSwitchTab(byLang, 'en', shared)
     expect(r.needCreate).toBe(false)
     expect(r.form).toEqual({ ...shared, title: 'Hello', body: 'world' })
   })

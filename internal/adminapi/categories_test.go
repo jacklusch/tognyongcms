@@ -241,11 +241,68 @@ func TestCategoriesTree(t *testing.T) {
 
 // catTreeNode 树形返回结构（仅测试用）。
 type catTreeNode struct {
-	ID           int64         `json:"id"`
-	ParentID     int64         `json:"parent_id"`
-	Name         string        `json:"name"`
-	Slug         string        `json:"slug"`
-	Description  string        `json:"description"`
-	ContentCount int           `json:"content_count"`
-	Children     []catTreeNode `json:"children"`
+	ID                int64         `json:"id"`
+	ParentID          int64         `json:"parent_id"`
+	Name              string        `json:"name"`
+	Slug              string        `json:"slug"`
+	Description       string        `json:"description"`
+	ContentCount      int           `json:"content_count"`
+	TotalContentCount int           `json:"total_content_count"`
+	Children          []catTreeNode `json:"children"`
+}
+
+func TestCategoriesCountByLang(t *testing.T) {
+	e := newEnv(t)
+	tok := e.login(t)
+	// seed news 分类 zh=3, en=3；products 分类 zh=2
+	// 无 lang → 默认 zh
+	w := e.do(t, http.MethodGet, "/api/categories", "", tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list = %d", w.Code)
+	}
+	var list struct {
+		Data struct {
+			Items []catTreeNode `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	count := func(name string) int {
+		for _, it := range list.Data.Items {
+			if it.Name == name {
+				return it.ContentCount
+			}
+		}
+		return -1
+	}
+	if count("新闻") != 3 {
+		t.Errorf("新闻 content_count = %d, want 3", count("新闻"))
+	}
+	// lang=en → 新闻也是 3（en 3 行）
+	w = e.do(t, http.MethodGet, "/api/categories?lang=en", "", tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list en = %d", w.Code)
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if count("新闻") != 3 {
+		t.Errorf("新闻 en content_count = %d, want 3", count("新闻"))
+	}
+	// total_content_count 全语言计数：新闻 zh 3 + en 3 = 6；产品 zh 2 + en 2 = 4
+	totalCount := func(name string) int {
+		for _, it := range list.Data.Items {
+			if it.Name == name {
+				return it.TotalContentCount
+			}
+		}
+		return -1
+	}
+	if totalCount("新闻") != 6 {
+		t.Errorf("新闻 total_content_count = %d, want 6", totalCount("新闻"))
+	}
+	if totalCount("产品") != 4 {
+		t.Errorf("产品 total_content_count = %d, want 4", totalCount("产品"))
+	}
 }

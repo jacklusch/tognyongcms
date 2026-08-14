@@ -68,9 +68,11 @@ type Data struct {
 	Meta     seo.Meta
 	Menus    []Menu `json:"menus"`
 
-	EntryCategory    string         `json:"entry_category"`
-	SubCategories    []CategoryInfo `json:"sub_categories"`
-	EntryCategoryURL string         `json:"entry_category_url"`
+	EntryCategory    string          `json:"entry_category"`
+	SubCategories    []CategoryInfo  `json:"sub_categories"`
+	EntryCategoryURL string          `json:"entry_category_url"`
+	Products         []content.Entry `json:"products"` // 首页产品中心（分类聚合）
+	News             []content.Entry `json:"news"`     // 首页新闻动态（分类聚合）
 }
 
 type Config struct {

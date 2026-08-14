@@ -31,11 +31,15 @@ type ContentRepo interface {
 	ListByContentID(ctx context.Context, contentID string) ([]Content, error)
 	ListByTypeLangStatus(ctx context.Context, typeName, lang, status string, offset, limit int) ([]Content, error)
 	CountByTypeLangStatus(ctx context.Context, typeName, lang, status string) (int, error)
+	ListByTypeLangStatusCategory(ctx context.Context, typeName, lang, status string, categoryID int64, offset, limit int) ([]Content, error)
+	CountByTypeLangStatusCategory(ctx context.Context, typeName, lang, status string, categoryID int64) (int, error)
 	CountByTypeStatus(ctx context.Context, typeName, status string) (int, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByType(ctx context.Context, typeName string) error
 	SearchByTypeLang(ctx context.Context, typeName, lang, q string, offset, limit int) ([]Content, error)
 	CountSearch(ctx context.Context, typeName, lang, q string) (int, error)
+	SearchByTypeLangCategory(ctx context.Context, typeName, lang, q string, categoryID int64, offset, limit int) ([]Content, error)
+	CountSearchCategory(ctx context.Context, typeName, lang, q string, categoryID int64) (int, error)
 	ListByCategories(ctx context.Context, typeName, lang string, ids []int64, offset, limit int) ([]Content, error)
 	CountByCategories(ctx context.Context, typeName, lang string, ids []int64) (int, error)
 }
@@ -94,6 +98,7 @@ type CategoryRepo interface {
 	Update(ctx context.Context, c *Category) error
 	Delete(ctx context.Context, id int64) error
 	CountContent(ctx context.Context, id int64) (int, error)
+	CountContentByLang(ctx context.Context, id int64, lang string) (int, error)
 	ListChildren(ctx context.Context, parentID int64) ([]Category, error)
 	Descendants(ctx context.Context, id int64) ([]Category, error)
 }

@@ -274,6 +274,55 @@ func (r *contentRepo) ListByTypeLangStatus(ctx context.Context, typeName, lang, 
 	return out, rows.Err()
 }
 
+func (r *contentRepo) ListByTypeLangStatusCategory(ctx context.Context, typeName, lang, status string, categoryID int64, offset, limit int) ([]store.Content, error) {
+	query := "SELECT " + contentCols + " FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=?"
+	args := []any{typeName}
+	if lang != "" {
+		query += " AND c.lang=?"
+		args = append(args, lang)
+	}
+	if status != "" {
+		query += " AND c.status=?"
+		args = append(args, status)
+	}
+	query += " AND c.payload LIKE ?"
+	args = append(args, "%\"category\":\""+itoa64(categoryID)+"\"%")
+	query += " ORDER BY c.published_at DESC, c.id DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Content
+	for rows.Next() {
+		c, err := scanContent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (r *contentRepo) CountByTypeLangStatusCategory(ctx context.Context, typeName, lang, status string, categoryID int64) (int, error) {
+	query := "SELECT COUNT(*) FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=?"
+	args := []any{typeName}
+	if lang != "" {
+		query += " AND c.lang=?"
+		args = append(args, lang)
+	}
+	if status != "" {
+		query += " AND c.status=?"
+		args = append(args, status)
+	}
+	query += " AND c.payload LIKE ?"
+	args = append(args, "%\"category\":\""+itoa64(categoryID)+"\"%")
+	var n int
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&n)
+	return n, err
+}
+
 func (r *contentRepo) CountByTypeLangStatus(ctx context.Context, typeName, lang, status string) (int, error) {
 	query := "SELECT COUNT(*) FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=?"
 	args := []any{typeName}
@@ -334,6 +383,34 @@ func (r *contentRepo) CountSearch(ctx context.Context, typeName, lang, q string)
 	err := r.db.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=? AND c.lang=? AND (c.title LIKE ? OR c.slug LIKE ?)",
 		typeName, lang, like, like).Scan(&n)
+	return n, err
+}
+
+func (r *contentRepo) SearchByTypeLangCategory(ctx context.Context, typeName, lang, q string, categoryID int64, offset, limit int) ([]store.Content, error) {
+	query := "SELECT " + contentCols + " FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=? AND c.lang=? AND (c.title LIKE ? OR c.slug LIKE ?) AND c.payload LIKE ? ORDER BY c.id DESC LIMIT ? OFFSET ?"
+	like := "%" + q + "%"
+	rows, err := r.db.QueryContext(ctx, query, typeName, lang, like, like, "%\"category\":\""+itoa64(categoryID)+"\"%", limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Content
+	for rows.Next() {
+		c, err := scanContent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (r *contentRepo) CountSearchCategory(ctx context.Context, typeName, lang, q string, categoryID int64) (int, error) {
+	var n int
+	like := "%" + q + "%"
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=? AND c.lang=? AND (c.title LIKE ? OR c.slug LIKE ?) AND c.payload LIKE ?",
+		typeName, lang, like, like, "%\"category\":\""+itoa64(categoryID)+"\"%").Scan(&n)
 	return n, err
 }
 
@@ -721,6 +798,14 @@ func (r *categoryRepo) Delete(ctx context.Context, id int64) error {
 func (r *categoryRepo) CountContent(ctx context.Context, id int64) (int, error) {
 	var n int
 	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM content WHERE payload LIKE ?", "%\"category\":\""+itoa64(id)+"\"%").Scan(&n)
+	return n, err
+}
+
+func (r *categoryRepo) CountContentByLang(ctx context.Context, id int64, lang string) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM content WHERE payload LIKE ? AND lang=?`,
+		"%\"category\":\""+itoa64(id)+"\"%", lang).Scan(&n)
 	return n, err
 }
 

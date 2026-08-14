@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"dulizhan/internal/config"
 	"dulizhan/internal/errs"
 	"dulizhan/internal/schema"
 	"dulizhan/internal/store"
+	"dulizhan/internal/translate"
 )
 
 type Entry struct {
@@ -20,6 +22,8 @@ type Service struct {
 	store         store.Store
 	reg           *schema.Registry
 	reservedNames map[string]bool
+	translator    translate.Translator
+	translateCfg  *config.TranslateConfig
 }
 
 func New(st store.Store, reg *schema.Registry, reservedNames []string) *Service {
@@ -120,10 +124,7 @@ func (s *Service) Create(ctx context.Context, typeName, lang string, data map[st
 	if err := s.reg.ValidateDocument(&ct, data); err != nil {
 		return Entry{}, fmt.Errorf("%w: %v", errs.ErrValidation, err)
 	}
-	slug, _ := data["slug"].(string)
-	if slug == "" {
-		slug = schema.Slugify(fmt.Sprint(data["title"]))
-	}
+	slug := ensureSlug(data)
 	title := ""
 	if f := schema.IndexField(&ct); f != nil {
 		title, _ = data[f.Name].(string)
@@ -160,10 +161,7 @@ func (s *Service) Update(ctx context.Context, id int64, data map[string]any) (En
 	if err := s.reg.ValidateDocument(&ct, data); err != nil {
 		return Entry{}, fmt.Errorf("%w: %v", errs.ErrValidation, err)
 	}
-	slug, _ := data["slug"].(string)
-	if slug == "" {
-		slug = schema.Slugify(fmt.Sprint(data["title"]))
-	}
+	slug := ensureSlug(data)
 	title := ""
 	if f := schema.IndexField(&ct); f != nil {
 		title, _ = data[f.Name].(string)
@@ -365,6 +363,38 @@ func (s *Service) ListAdmin(ctx context.Context, typeName, lang, status string, 
 	return out, total, nil
 }
 
+// ListByTypeLangStatusCategory 后台内容列表按分类筛选：status 为空表示不过滤。
+func (s *Service) ListByTypeLangStatusCategory(ctx context.Context, typeName, lang, status string, categoryID int64, page, perPage int) ([]Entry, int, error) {
+	// 校验类型存在
+	if _, err := s.GetType(ctx, typeName); err != nil {
+		return nil, 0, err
+	}
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
+	rows, err := s.store.ContentRepo().ListByTypeLangStatusCategory(ctx, typeName, lang, status, categoryID, (page-1)*perPage, perPage)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.store.ContentRepo().CountByTypeLangStatusCategory(ctx, typeName, lang, status, categoryID)
+	if err != nil {
+		return nil, 0, err
+	}
+	ct, _ := s.GetType(ctx, typeName)
+	out := make([]Entry, 0, len(rows))
+	for _, row := range rows {
+		e, err := s.entryFromStore(ctx, ct, row)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, e)
+	}
+	return out, total, nil
+}
+
 // CreateTranslation 给 contentID 翻译组新增一种语言变体。
 // 作者只能给自己创建的内容加翻译，moderator 可翻译他人内容。
 func (s *Service) CreateTranslation(ctx context.Context, typeName, lang, contentID string, data map[string]any, actor Actor) (Entry, error) {
@@ -396,10 +426,7 @@ func (s *Service) CreateTranslation(ctx context.Context, typeName, lang, content
 			return Entry{}, fmt.Errorf("%w: 该语言翻译已存在", errs.ErrValidation)
 		}
 	}
-	slug, _ := data["slug"].(string)
-	if slug == "" {
-		slug = schema.Slugify(fmt.Sprint(data["title"]))
-	}
+	slug := ensureSlug(data)
 	title := ""
 	if f := schema.IndexField(&ct); f != nil {
 		title, _ = data[f.Name].(string)
@@ -440,6 +467,37 @@ func (s *Service) Search(ctx context.Context, typeName, lang, q string, page, pe
 		return nil, 0, err
 	}
 	total, err := s.store.ContentRepo().CountSearch(ctx, typeName, lang, q)
+	if err != nil {
+		return nil, 0, err
+	}
+	ct, _ := s.GetType(ctx, typeName)
+	out := make([]Entry, 0, len(rows))
+	for _, row := range rows {
+		e, err := s.entryFromStore(ctx, ct, row)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, e)
+	}
+	return out, total, nil
+}
+
+// SearchByTypeLangCategory 按关键词+分类搜索某类型某语言的内容（后台）。
+func (s *Service) SearchByTypeLangCategory(ctx context.Context, typeName, lang, q string, categoryID int64, page, perPage int) ([]Entry, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
+	if _, err := s.GetType(ctx, typeName); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.store.ContentRepo().SearchByTypeLangCategory(ctx, typeName, lang, q, categoryID, (page-1)*perPage, perPage)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.store.ContentRepo().CountSearchCategory(ctx, typeName, lang, q, categoryID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -511,4 +569,156 @@ func (s *Service) DeleteType(ctx context.Context, name string) error {
 		}
 		return tx.ContentTypeRepo().Delete(ctx, ct.ID)
 	})
+}
+
+// --- 自动翻译 ---
+
+// SetTranslator 注入翻译器与配置（可选；nil 或 Enabled=false 时关闭自动翻译）。
+func (s *Service) SetTranslator(t translate.Translator, cfg *config.TranslateConfig) {
+	s.translator = t
+	s.translateCfg = cfg
+}
+
+// TranslateStatus 自动翻译结果状态。
+type TranslateStatus struct {
+	Triggered bool   `json:"triggered"`
+	Created   bool   `json:"created"`
+	Status    string `json:"status"` // "translated" | "fallback"
+}
+
+// EnsureTranslation 保存源语言内容后调用：为 target_lang 自动生成/覆盖翻译。
+// 可翻译文本字段走翻译器；翻译失败时降级为复制源语言内容（fallbackCopy）。
+func (s *Service) EnsureTranslation(ctx context.Context, typeName, lang, contentID string, data map[string]any, actor Actor) (TranslateStatus, error) {
+	if s.translator == nil || s.translateCfg == nil || !s.translateCfg.Enabled {
+		return TranslateStatus{}, nil
+	}
+	if lang != s.translateCfg.SourceLang {
+		return TranslateStatus{}, nil
+	}
+	ct, err := s.GetType(ctx, typeName)
+	if err != nil {
+		return TranslateStatus{}, err
+	}
+	// 组装 en data：可翻译文本字段翻译，其余复制
+	enData := make(map[string]any, len(data))
+	for _, f := range ct.Fields {
+		val, ok := data[f.Name]
+		if !ok {
+			continue
+		}
+		// slug 是内容唯一标识，不随语言翻译（双语应保持一致链接）
+		if f.Name == "slug" {
+			enData[f.Name] = val
+			continue
+		}
+		if f.Translatable && isTextType(f.Type) {
+			str, ok := val.(string)
+			if !ok || str == "" {
+				enData[f.Name] = val
+				continue
+			}
+			var tr string
+			var terr error
+			if f.Type == schema.TypeRichText {
+				tr, terr = s.translator.TranslateRichText(ctx, str, s.translateCfg.SourceLang, s.translateCfg.TargetLang)
+			} else {
+				tr, terr = s.translator.TranslateText(ctx, str, s.translateCfg.SourceLang, s.translateCfg.TargetLang)
+			}
+			if terr != nil {
+				// 降级：复制 zh（fallbackCopy 直接用原始 data）
+				return s.fallbackCopy(ctx, typeName, lang, contentID, data, actor)
+			}
+			if f.Type == schema.TypeRichText {
+				// TranslateRichText 经 html.Render 输出带 <html>/<head>/<body> 外壳，落库前剥离。
+				tr = stripHTMLShell(tr)
+			}
+			enData[f.Name] = tr
+		} else {
+			enData[f.Name] = val
+		}
+	}
+	// 写 en（存在覆盖 / 不存在新建）
+	var enEntry Entry
+	parents, err := s.store.ContentRepo().ListByContentID(ctx, contentID)
+	if err != nil {
+		return TranslateStatus{}, err
+	}
+	existing := int64(0)
+	zhStatus := ""
+	for _, p := range parents {
+		if p.Lang == s.translateCfg.TargetLang {
+			existing = p.ID
+		}
+		if p.Lang == lang {
+			zhStatus = p.Status
+		}
+	}
+	created := false
+	if existing == 0 {
+		ne, err := s.CreateTranslation(ctx, typeName, s.translateCfg.TargetLang, contentID, enData, actor)
+		if err != nil {
+			return TranslateStatus{}, err
+		}
+		enEntry = ne
+		created = true
+	} else {
+		ue, err := s.Update(ctx, existing, enData)
+		if err != nil {
+			return TranslateStatus{}, err
+		}
+		enEntry = ue
+	}
+	// en 状态跟随 zh
+	if zhStatus != "" && enEntry.Content.Status != zhStatus {
+		if err := s.SetStatus(ctx, enEntry.Content.ID, zhStatus); err != nil {
+			return TranslateStatus{}, err
+		}
+	}
+	return TranslateStatus{Triggered: true, Created: created, Status: "translated"}, nil
+}
+
+// fallbackCopy 降级：en 复制 zh 全部字段，状态 draft。
+func (s *Service) fallbackCopy(ctx context.Context, typeName, lang, contentID string, data map[string]any, actor Actor) (TranslateStatus, error) {
+	enData := make(map[string]any, len(data))
+	for k, v := range data {
+		enData[k] = v
+	}
+	enData["slug"] = ensureSlug(enData)
+	// fallback 降级草稿内部标记：syncTranslationStatus 跳过该行，不随 zh 发布同步转正。
+	enData["_auto_translate_fallback"] = true
+	parents, err := s.store.ContentRepo().ListByContentID(ctx, contentID)
+	if err != nil {
+		return TranslateStatus{}, err
+	}
+	existing := int64(0)
+	for _, p := range parents {
+		if p.Lang == s.translateCfg.TargetLang {
+			existing = p.ID
+		}
+	}
+	created := false
+	if existing == 0 {
+		ne, err := s.CreateTranslation(ctx, typeName, s.translateCfg.TargetLang, contentID, enData, actor)
+		if err != nil {
+			return TranslateStatus{}, err
+		}
+		_ = s.SetStatus(ctx, ne.Content.ID, "draft")
+		created = true
+	} else {
+		ue, err := s.Update(ctx, existing, enData)
+		if err != nil {
+			return TranslateStatus{}, err
+		}
+		_ = s.SetStatus(ctx, ue.Content.ID, "draft")
+	}
+	return TranslateStatus{Triggered: true, Created: created, Status: "fallback"}, nil
+}
+
+// isTextType 是否文本类字段类型。
+func isTextType(t schema.FieldType) bool {
+	switch t {
+	case schema.TypeText, schema.TypeTextarea, schema.TypeRichText:
+		return true
+	}
+	return false
 }

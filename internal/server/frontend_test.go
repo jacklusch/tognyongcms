@@ -290,6 +290,7 @@ func TestFrontendCategoryPage(t *testing.T) {
 	e, err := srv.content.Create(ctx, "article", "zh", map[string]any{
 		"title": "分类文章", "slug": "cat-post",
 		"content": "<p>正文</p>", "category": strconv.FormatInt(cat.ID, 10), // category 字段存分类 id
+		"published_on": "2026-01-15",
 	}, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -333,6 +334,7 @@ func TestFrontendSubcategories(t *testing.T) {
 	e, err := srv.content.Create(ctx, "article", "zh", map[string]any{
 		"title": "斩拌机文章", "slug": "chopper-post",
 		"content": "<p>正文</p>", "category": strconv.FormatInt(chopper.ID, 10),
+		"published_on": "2026-01-15",
 	}, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -399,6 +401,7 @@ func TestFrontendCategoryPageNoPager(t *testing.T) {
 		e, err := srv.content.Create(ctx, "article", "zh", map[string]any{
 			"title": fmt.Sprintf("分类文章 %d", i), "slug": fmt.Sprintf("cat-post-%d", i),
 			"content": "<p>正文</p>", "category": strconv.FormatInt(cat.ID, 10),
+			"published_on": "2026-01-15",
 		}, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -513,6 +516,40 @@ func TestAdminAPIE2E(t *testing.T) {
 	}
 	if !strings.Contains(w2.Body.String(), "接口发布的内容") {
 		t.Errorf("note 列表未渲染 API 发布的内容: %s", w2.Body.String())
+	}
+}
+
+func TestHomeCategoryItems(t *testing.T) {
+	srv := buildTestServer(t, "../../themes")
+	ctx := context.Background()
+
+	// products 分类含子分类（chopper/sausage-machine/mixer），聚合应为 5 篇
+	items := srv.homeCategoryItems(ctx, "article", "zh", "products", 10)
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Content.Slug] = true
+	}
+	for _, slug := range []string{"chopper-1", "sausage-machine-1", "mixer-1", "products-1", "products-2"} {
+		if !got[slug] {
+			t.Errorf("products 分类聚合缺 %s", slug)
+		}
+	}
+
+	// news 分类应为 3 篇
+	news := srv.homeCategoryItems(ctx, "article", "zh", "news", 10)
+	newsSlugs := map[string]bool{}
+	for _, it := range news {
+		newsSlugs[it.Content.Slug] = true
+	}
+	for _, slug := range []string{"news-1", "news-2", "hello-zh"} {
+		if !newsSlugs[slug] {
+			t.Errorf("news 分类聚合缺 %s", slug)
+		}
+	}
+
+	// 不存在的分类返回 nil
+	if srv.homeCategoryItems(ctx, "article", "zh", "not-exist", 10) != nil {
+		t.Errorf("不存在分类应返回 nil")
 	}
 }
 

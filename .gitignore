@@ -16,5 +16,8 @@ internal/server/dist/assets/*.map
 .DS_Store
 Thumbs.db
 
+# superpowers SDD 工作区（审查记录/临时文件）
+.superpowers/
+
 # 本地配置（含密钥）
 config.yaml

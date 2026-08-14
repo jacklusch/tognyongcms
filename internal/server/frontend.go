@@ -59,10 +59,40 @@ func (s *Server) renderHome(c *gin.Context, th *theme.Theme, lang string, data *
 		return
 	}
 	data.Items, data.Total = items, total
+	// 首页产品/新闻分区：按配置的分类 slug 聚合内容（含子分类），未配置/不存在则留空回退
+	if slug := s.cfg.Site.HomeProductsCategory; slug != "" {
+		if items := s.homeCategoryItems(c.Request.Context(), "article", lang, slug, 6); items != nil {
+			data.Products = items
+		}
+	}
+	if slug := s.cfg.Site.HomeNewsCategory; slug != "" {
+		if items := s.homeCategoryItems(c.Request.Context(), "article", lang, slug, 3); items != nil {
+			data.News = items
+		}
+	}
 	data.Meta = s.seo.BuildHome(lang)
 	if err := th.Render(c.Writer, "index", data); err != nil {
 		c.String(http.StatusInternalServerError, "渲染失败: %v", err)
 	}
+}
+
+// homeCategoryItems 返回某分类（含子孙分类）下已发布内容，分类不存在返回 nil。
+func (s *Server) homeCategoryItems(ctx context.Context, typeName, lang, slug string, limit int) []content.Entry {
+	cat, err := s.store.CategoryRepo().GetBySlug(ctx, slug)
+	if err != nil {
+		return nil
+	}
+	ids := []int64{cat.ID}
+	if ds, err := s.store.CategoryRepo().Descendants(ctx, cat.ID); err == nil {
+		for _, d := range ds {
+			ids = append(ids, d.ID)
+		}
+	}
+	items, _, err := s.content.ListPublishedByCategories(ctx, typeName, lang, ids, 1, limit)
+	if err != nil {
+		return nil
+	}
+	return items
 }
 
 func (s *Server) renderList(c *gin.Context, th *theme.Theme, lang, typeName string, data *theme.Data) {
@@ -168,6 +198,7 @@ func (s *Server) renderCategory(c *gin.Context, th *theme.Theme, lang string, pa
 		})
 	}
 	data.Items, data.Total, data.Page, data.TypeName = all, total, 1, "category"
+	data.EntryCategory = cat.Name
 	data.Meta = s.seo.BuildList(lang, cat.Name, 1)
 	if err := th.Render(c.Writer, "list", data); err != nil {
 		c.String(http.StatusInternalServerError, "渲染失败: %v", err)

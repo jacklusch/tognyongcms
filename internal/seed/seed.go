@@ -24,8 +24,8 @@ func Run(ctx context.Context, st store.Store, svc *content.Service, med media.Me
 			{Name: "excerpt", Label: "摘要", Type: schema.TypeTextarea, Translatable: true},
 			{Name: "content", Label: "正文", Type: schema.TypeRichText, Required: true, Translatable: true},
 			{Name: "cover", Label: "封面图", Type: schema.TypeImage},
-			{Name: "published_on", Label: "发布日期", Type: schema.TypeDate},
-			{Name: "category", Label: "分类", Type: schema.TypeRelation, RelationType: "category"},
+			{Name: "published_on", Label: "发布日期", Type: schema.TypeDate, Required: true},
+			{Name: "category", Label: "分类", Type: schema.TypeRelation, RelationType: "category", Required: true},
 		},
 	}
 	if _, err := svc.GetType(ctx, "article"); err != nil {
@@ -49,11 +49,22 @@ func Run(ctx context.Context, st store.Store, svc *content.Service, med media.Me
 		}
 	}
 
-	// 先建 zh，再把 en 建为同组翻译（同 content_id），保证多语言切换可用。
+	// 建分类、演示文章与菜单（hello-zh/en 演示文章在分类建好后创建，见下）
+	if err := seedDemoData(ctx, st, svc, med); err != nil {
+		return err
+	}
+
+	// 演示首页文章 hello-zh（news 分类，双语同组）
+	newsCat, err := st.CategoryRepo().GetBySlug(ctx, "news")
+	if err != nil {
+		return fmt.Errorf("查询 news 分类: %w", err)
+	}
 	if _, err := svc.GetPublishedBySlugLang(ctx, "article", "hello-zh", "zh"); err != nil {
 		e, err := svc.Create(ctx, "article", "zh", map[string]any{
 			"title": "你好，世界", "slug": "hello-zh",
 			"excerpt": "这是第一篇中文示例文章", "content": "<p>欢迎使用 Dulizhan CMS。</p>",
+			"published_on": "2026-01-15",
+			"category":     fmt.Sprintf("%d", newsCat.ID),
 		}, 0)
 		if err != nil {
 			return fmt.Errorf("创建示例文章 hello-zh: %w", err)
@@ -65,6 +76,8 @@ func Run(ctx context.Context, st store.Store, svc *content.Service, med media.Me
 		te, err := svc.CreateTranslation(ctx, "article", "en", e.Content.ContentID, map[string]any{
 			"title": "Hello World", "slug": "hello-en",
 			"excerpt": "The first sample article", "content": "<p>Welcome to Dulizhan CMS.</p>",
+			"published_on": "2026-01-15",
+			"category":     fmt.Sprintf("%d", newsCat.ID),
 		}, content.Actor{UserID: 0, IsModerator: true})
 		if err != nil {
 			return fmt.Errorf("创建示例文章 hello-en 翻译: %w", err)
@@ -72,10 +85,6 @@ func Run(ctx context.Context, st store.Store, svc *content.Service, med media.Me
 		if err := svc.SetStatus(ctx, te.Content.ID, "published"); err != nil {
 			return err
 		}
-	}
-	// hello-zh/en 归入 news 分类（分类创建后设置）
-	if err := seedDemoData(ctx, st, svc, med); err != nil {
-		return err
 	}
 	return nil
 }
@@ -155,8 +164,9 @@ func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med
 			e, err := svc.Create(ctx, "article", "zh", map[string]any{
 				"title": a.ZhTitle, "slug": a.Slug,
 				"excerpt": firstSentence(a.ZhBody), "content": a.ZhBody,
-				"category": fmt.Sprintf("%d", catIDs[catSlug]),
-				"cover":    cover,
+				"category":     fmt.Sprintf("%d", catIDs[catSlug]),
+				"cover":        cover,
+				"published_on": "2026-01-15",
 			}, 0)
 			if err != nil {
 				return fmt.Errorf("创建演示文章 %s: %w", a.Slug, err)
@@ -167,8 +177,9 @@ func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med
 			te, err := svc.CreateTranslation(ctx, "article", "en", e.Content.ContentID, map[string]any{
 				"title": a.EnTitle, "slug": a.Slug + "-en",
 				"excerpt": firstSentence(a.EnBody), "content": a.EnBody,
-				"category": fmt.Sprintf("%d", catIDs[catSlug]),
-				"cover":    cover,
+				"category":     fmt.Sprintf("%d", catIDs[catSlug]),
+				"cover":        cover,
+				"published_on": "2026-01-15",
 			}, content.Actor{UserID: 0, IsModerator: true})
 			if err != nil {
 				return fmt.Errorf("创建演示翻译 %s-en: %w", a.Slug, err)

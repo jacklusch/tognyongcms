@@ -20,7 +20,6 @@ const selectedUrl = ref('')
 const toolbarConfig = {}
 const editorConfig = {
   placeholder: '输入内容…',
-  onChange: (editor: IDomEditor) => emit('update:modelValue', editor.getHtml()),
   MENU_CONF: {
     // 上传图片：走现有 /api/media/upload（进媒体库），返回 url 插入编辑器
     uploadImage: {
@@ -108,7 +107,7 @@ watch(selectedUrl, (url) => {
       <el-button size="small" @click="openPicker('video')">选视频</el-button>
       <el-button size="small" @click="openPicker('file')">选附件</el-button>
     </div>
-    <Editor :default-config="editorConfig" mode="default" @on-created="handleCreated" style="height: 300px; overflow-y: hidden;" />
+    <Editor :default-config="editorConfig" :model-value="modelValue" @update:model-value="(v) => emit('update:modelValue', v)" mode="default" @on-created="handleCreated" style="height: 300px; overflow-y: hidden;" />
     <MediaPicker v-model:visible="pickerVisible" v-model:selected="selectedUrl" />
   </div>
 </template>
