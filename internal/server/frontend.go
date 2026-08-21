@@ -21,7 +21,19 @@ import (
 const defaultPerPage = 10
 
 func (s *Server) handleFrontend(c *gin.Context) {
-	lang, segs := s.i18n.ResolvePath(c.Request.URL.Path)
+	p := c.Request.URL.Path
+	if p != "/" && strings.HasSuffix(p, "/") {
+		np := strings.TrimRight(p, "/")
+		if np == "" {
+			np = "/"
+		}
+		if c.Request.URL.RawQuery != "" {
+			np += "?" + c.Request.URL.RawQuery
+		}
+		c.Redirect(http.StatusMovedPermanently, np)
+		return
+	}
+	lang, segs := s.i18n.ResolvePath(p)
 	th, err := s.themes.Get(s.cfg.Site.Theme)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "主题加载失败: %v", err)
@@ -30,7 +42,9 @@ func (s *Server) handleFrontend(c *gin.Context) {
 	c.Status(http.StatusOK) // gin NoRoute 预置 404，成功渲染前显式置 200
 	data := &theme.Data{
 		Site: theme.SiteInfo{
-			Name: s.cfg.Site.Name, URL: s.cfg.Site.URL, Description: s.cfg.Site.Description,
+			Name:        s.cfg.Site.SiteName(lang),
+			URL:         s.cfg.Site.URL,
+			Description: s.cfg.Site.SiteDescription(lang),
 		},
 		Lang:    lang,
 		Langs:   s.i18n.All(),
@@ -193,13 +207,13 @@ func (s *Server) renderCategory(c *gin.Context, th *theme.Theme, lang string, pa
 	}
 	for _, ch := range children {
 		data.SubCategories = append(data.SubCategories, theme.CategoryInfo{
-			ID: ch.ID, Name: ch.Name, Slug: ch.Slug,
+			ID: ch.ID, Name: s.catName(ch, lang), Slug: ch.Slug,
 			URL: s.categoryURL(lang, append(append([]string{}, parentChain...), ch.Slug)),
 		})
 	}
 	data.Items, data.Total, data.Page, data.TypeName = all, total, 1, "category"
-	data.EntryCategory = cat.Name
-	data.Meta = s.seo.BuildList(lang, cat.Name, 1)
+	data.EntryCategory = s.catName(cat, lang)
+	data.Meta = s.seo.BuildCategory(lang, pathSegs, s.catName(cat, lang), all)
 	if err := th.Render(c.Writer, "list", data); err != nil {
 		c.String(http.StatusInternalServerError, "渲染失败: %v", err)
 	}
@@ -216,16 +230,26 @@ func (s *Server) renderSingle(c *gin.Context, th *theme.Theme, lang, typeName, s
 		return
 	}
 	data.Entry = &e
-	data.Meta = s.seo.BuildEntry(lang, e)
-	// 解析分类：entry.Fields["category"] 是分类 id，查名称并沿父链构造归档 URL
+	var crumbs []seo.Breadcrumb
+	isProduct := false
 	if catIDStr, ok := e.Fields["category"].(string); ok && catIDStr != "" {
 		if id, err := strconv.ParseInt(catIDStr, 10, 64); err == nil {
 			if cat, err := s.store.CategoryRepo().GetByID(c.Request.Context(), id); err == nil {
-				data.EntryCategory = cat.Name
-				data.EntryCategoryURL = s.categoryURL(lang, s.categoryChain(c.Request.Context(), cat.ID))
+				data.EntryCategory = s.catName(cat, lang)
+				chain := s.categoryChainInfo(c.Request.Context(), cat.ID)
+				if chain != nil {
+					slugs := make([]string, len(chain))
+					for i, c := range chain {
+						slugs[i] = c.Slug
+					}
+					data.EntryCategoryURL = s.categoryURL(lang, slugs)
+					crumbs = s.entryBreadcrumbs(lang, chain, slugs, e.TypeName, e.Content.Slug, e.Content.Title)
+					isProduct = len(slugs) > 0 && slugs[0] == s.cfg.Site.HomeProductsCategory // 顶级分类为产品分类即视为产品页
+				}
 			}
 		}
 	}
+	data.Meta = s.seo.BuildEntry(lang, e, crumbs, isProduct)
 	if err := th.Render(c.Writer, th.TemplateFor(typeName), data); err != nil {
 		c.String(http.StatusInternalServerError, "渲染失败: %v", err)
 	}
@@ -249,10 +273,54 @@ func (s *Server) categoryChain(ctx context.Context, id int64) []string {
 	return slugs
 }
 
+// categoryChainInfo 返回分类自顶级到自身的完整分类链（自顶向下），任一级查询失败返回 nil。
+func (s *Server) categoryChainInfo(ctx context.Context, id int64) []store.Category {
+	var chain []store.Category
+	cur := id
+	for cur != 0 {
+		cat, err := s.store.CategoryRepo().GetByID(ctx, cur)
+		if err != nil {
+			return nil
+		}
+		chain = append(chain, cat)
+		cur = cat.ParentID
+	}
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+	return chain
+}
+
 // categoryURL 构造带语言前缀的分类归档 URL：/category/<slug1>/<slug2>/...
 func (s *Server) categoryURL(lang string, chain []string) string {
 	rest := "/category/" + strings.Join(chain, "/")
 	return s.i18n.URLPath(lang, rest)
+}
+
+// catName 按语言取分类显示名：zh 用 Name；否则 NameEn 非空用 NameEn，空回退 Name。
+func (s *Server) catName(cat store.Category, lang string) string {
+	if lang == "zh" {
+		return cat.Name
+	}
+	if cat.NameEn != "" {
+		return cat.NameEn
+	}
+	return cat.Name
+}
+
+// entryBreadcrumbs 构造详情页面包屑：首页 > 分类链 > 当前页（URL 为绝对地址）。
+func (s *Server) entryBreadcrumbs(lang string, chain []store.Category, slugs []string, typeName, slug, currentTitle string) []seo.Breadcrumb {
+	homeName := "Home"
+	if lang == "zh" {
+		homeName = "首页"
+	}
+	out := []seo.Breadcrumb{{Name: homeName, URL: s.cfg.Site.URL + s.i18n.URLPath(lang, "/")}}
+	for i := range chain {
+		u := s.categoryURL(lang, slugs[:i+1])
+		out = append(out, seo.Breadcrumb{Name: s.catName(chain[i], lang), URL: s.cfg.Site.URL + u})
+	}
+	out = append(out, seo.Breadcrumb{Name: currentTitle, URL: s.cfg.Site.URL + s.i18n.URLPath(lang, "/"+typeName+"/"+slug)})
+	return out
 }
 
 func (s *Server) render404(c *gin.Context, th *theme.Theme, lang string) {
@@ -272,6 +340,45 @@ func (s *Server) handleSitemap(c *gin.Context) {
 		return
 	}
 	var entries []seo.SitemapEntry
+	// 首页
+	for _, l := range s.i18n.All() {
+		entries = append(entries, seo.SitemapEntry{Loc: s.cfg.Site.URL + s.i18n.URLPath(l.Code, "/")})
+	}
+	// 全部分类页（含父/子，任意层级）
+	cats, err := s.store.CategoryRepo().List(ctx)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "查询分类失败: %v", err)
+		return
+	}
+	byID := make(map[int64]store.Category, len(cats))
+	for _, cat := range cats {
+		byID[cat.ID] = cat
+	}
+	chainOf := func(id int64) []string {
+		var slugs []string
+		cur := id
+		for cur != 0 {
+			c, ok := byID[cur]
+			if !ok {
+				return nil
+			}
+			slugs = append(slugs, c.Slug)
+			cur = c.ParentID
+		}
+		for i, j := 0, len(slugs)-1; i < j; i, j = i+1, j-1 {
+			slugs[i], slugs[j] = slugs[j], slugs[i]
+		}
+		return slugs
+	}
+	for _, cat := range cats {
+		chain := chainOf(cat.ID)
+		if chain == nil {
+			continue
+		}
+		for _, l := range s.i18n.All() {
+			entries = append(entries, seo.SitemapEntry{Loc: s.cfg.Site.URL + s.categoryURL(l.Code, chain)})
+		}
+	}
 	for _, ct := range types {
 		for _, l := range s.i18n.All() {
 			items, _, err := s.content.ListPublished(ctx, ct.Name, l.Code, 1, 1000)

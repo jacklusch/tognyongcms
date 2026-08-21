@@ -19,4 +19,9 @@
       });
     }
   });
+  // SEO/性能：正文内嵌视频 iframe 懒加载（覆盖已存内容）
+  var frames = document.querySelectorAll('.entry-content iframe');
+  Array.prototype.forEach.call(frames, function (f) {
+    if (!f.hasAttribute('loading')) f.setAttribute('loading', 'lazy');
+  });
 })();

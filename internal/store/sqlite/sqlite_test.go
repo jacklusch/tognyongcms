@@ -844,6 +844,59 @@ func TestListByTypeLangStatusCategory(t *testing.T) {
 	}
 }
 
+func TestCategoryNameEn(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	repo := st.CategoryRepo()
+	c := &store.Category{Name: "产品", NameEn: "Products", Slug: "products-en"}
+	if err := repo.Create(ctx, c); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := repo.GetByID(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.NameEn != "Products" {
+		t.Errorf("NameEn = %q, want Products", got.NameEn)
+	}
+	got.NameEn = "Prod"
+	if err := repo.Update(ctx, &got); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	got2, err := repo.GetBySlug(ctx, "products-en")
+	if err != nil {
+		t.Fatalf("GetBySlug: %v", err)
+	}
+	if got2.NameEn != "Prod" {
+		t.Errorf("update 后 NameEn = %q, want Prod", got2.NameEn)
+	}
+	kid := &store.Category{Name: "斩拌机", NameEn: "Chopper", Slug: "chopper-en", ParentID: c.ID}
+	if err := repo.Create(ctx, kid); err != nil {
+		t.Fatalf("Create kid: %v", err)
+	}
+	kids, err := repo.ListChildren(ctx, c.ID)
+	if err != nil || len(kids) != 1 || kids[0].NameEn != "Chopper" {
+		t.Errorf("ListChildren NameEn = %+v, %v", kids, err)
+	}
+	desc, err := repo.Descendants(ctx, c.ID)
+	if err != nil || len(desc) != 1 || desc[0].NameEn != "Chopper" {
+		t.Errorf("Descendants NameEn = %+v, %v", desc, err)
+	}
+	all, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	found := false
+	for _, x := range all {
+		if x.ID == c.ID && x.NameEn == "Prod" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("List 未带回 name_en: %+v", all)
+	}
+}
+
 func TestSearchByTypeLangCategory(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("DULIZHAN_SEED_NO_DOWNLOAD", "1")

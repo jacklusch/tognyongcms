@@ -41,6 +41,10 @@ func Open(dsn string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	if err := migrateCategoriesNameEn(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	return &Store{db: db}, nil
 }
 
@@ -748,7 +752,7 @@ func (s *Store) CategoryRepo() store.CategoryRepo { return &categoryRepo{db: s.d
 func itoa64(id int64) string { return strconv.FormatInt(id, 10) }
 
 func (r *categoryRepo) List(ctx context.Context) ([]store.Category, error) {
-	rows, err := r.db.QueryContext(ctx, "SELECT id, parent_id, name, slug, description, created_at FROM categories ORDER BY id")
+	rows, err := r.db.QueryContext(ctx, "SELECT id, parent_id, name, name_en, slug, description, created_at FROM categories ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -765,18 +769,18 @@ func (r *categoryRepo) List(ctx context.Context) ([]store.Category, error) {
 }
 
 func (r *categoryRepo) GetByID(ctx context.Context, id int64) (store.Category, error) {
-	return scanCategory(r.db.QueryRowContext(ctx, "SELECT id, parent_id, name, slug, description, created_at FROM categories WHERE id = ?", id))
+	return scanCategory(r.db.QueryRowContext(ctx, "SELECT id, parent_id, name, name_en, slug, description, created_at FROM categories WHERE id = ?", id))
 }
 
 func (r *categoryRepo) GetBySlug(ctx context.Context, slug string) (store.Category, error) {
-	return scanCategory(r.db.QueryRowContext(ctx, "SELECT id, parent_id, name, slug, description, created_at FROM categories WHERE slug = ?", slug))
+	return scanCategory(r.db.QueryRowContext(ctx, "SELECT id, parent_id, name, name_en, slug, description, created_at FROM categories WHERE slug = ?", slug))
 }
 
 func (r *categoryRepo) Create(ctx context.Context, c *store.Category) error {
 	c.CreatedAt = time.Now().UTC()
 	res, err := r.db.ExecContext(ctx,
-		"INSERT INTO categories (name, slug, description, created_at, parent_id) VALUES (?,?,?,?,?)",
-		c.Name, c.Slug, c.Description, c.CreatedAt.Format(tsLayout), c.ParentID)
+		"INSERT INTO categories (name, name_en, slug, description, created_at, parent_id) VALUES (?,?,?,?,?,?)",
+		c.Name, c.NameEn, c.Slug, c.Description, c.CreatedAt.Format(tsLayout), c.ParentID)
 	if err != nil {
 		return wrapUnique(err, "分类 slug 已存在")
 	}
@@ -785,8 +789,8 @@ func (r *categoryRepo) Create(ctx context.Context, c *store.Category) error {
 }
 
 func (r *categoryRepo) Update(ctx context.Context, c *store.Category) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE categories SET name=?, slug=?, description=?, parent_id=? WHERE id=?",
-		c.Name, c.Slug, c.Description, c.ParentID, c.ID)
+	_, err := r.db.ExecContext(ctx, "UPDATE categories SET name=?, name_en=?, slug=?, description=?, parent_id=? WHERE id=?",
+		c.Name, c.NameEn, c.Slug, c.Description, c.ParentID, c.ID)
 	return wrapUnique(err, "分类 slug 已存在")
 }
 
@@ -810,7 +814,7 @@ func (r *categoryRepo) CountContentByLang(ctx context.Context, id int64, lang st
 }
 
 func (r *categoryRepo) ListChildren(ctx context.Context, parentID int64) ([]store.Category, error) {
-	rows, err := r.db.QueryContext(ctx, "SELECT id, parent_id, name, slug, description, created_at FROM categories WHERE parent_id = ? ORDER BY id", parentID)
+	rows, err := r.db.QueryContext(ctx, "SELECT id, parent_id, name, name_en, slug, description, created_at FROM categories WHERE parent_id = ? ORDER BY id", parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -834,7 +838,7 @@ func (r *categoryRepo) Descendants(ctx context.Context, id int64) ([]store.Categ
 			UNION ALL
 			SELECT c.id FROM categories c JOIN descs d ON c.parent_id = d.id
 		)
-		SELECT c.id, c.parent_id, c.name, c.slug, c.description, c.created_at
+		SELECT c.id, c.parent_id, c.name, c.name_en, c.slug, c.description, c.created_at
 		FROM categories c JOIN descs d ON c.id = d.id ORDER BY c.id`, id)
 	if err != nil {
 		return nil, err
@@ -854,7 +858,7 @@ func (r *categoryRepo) Descendants(ctx context.Context, id int64) ([]store.Categ
 func scanCategory(row interface{ Scan(...any) error }) (store.Category, error) {
 	var c store.Category
 	var created string
-	err := row.Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug, &c.Description, &created)
+	err := row.Scan(&c.ID, &c.ParentID, &c.Name, &c.NameEn, &c.Slug, &c.Description, &created)
 	if err != nil {
 		return c, wrapErr(err)
 	}

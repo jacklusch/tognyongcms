@@ -11,7 +11,7 @@ const items = ref<CategoryItem[]>([])
 const all = ref<CategoryPath[]>([])
 const dialogVisible = ref(false)
 const editing = ref<CategoryItem | null>(null)
-const form = ref<{ name: string; slug: string; description: string; parent_id?: number }>({ name: '', slug: '', description: '' })
+const form = ref<{ name: string; name_en: string; slug: string; description: string; parent_id?: number }>({ name: '', name_en: '', slug: '', description: '' })
 
 const cascadeOptions = computed(() => buildCategoryOptions(all.value))
 const cascadeProps = { checkStrictly: true, emitPath: false }
@@ -34,7 +34,7 @@ onMounted(async () => {
 
 function openCreate(row?: CategoryItem) {
   editing.value = null
-  form.value = { name: '', slug: '', description: '', parent_id: row?.id }
+  form.value = { name: '', name_en: '', slug: '', description: '', parent_id: row?.id }
   dialogVisible.value = true
 }
 
@@ -42,6 +42,7 @@ function openEdit(c: CategoryItem) {
   editing.value = c
   form.value = {
     name: c.name,
+    name_en: c.name_en ?? '',
     slug: c.slug,
     description: c.description,
     parent_id: findParentPathId(all.value, c.id),
@@ -64,6 +65,7 @@ async function save() {
   try {
     const body = {
       name: form.value.name,
+      name_en: form.value.name_en,
       slug: form.value.slug,
       description: form.value.description,
       parent_id: form.value.parent_id,
@@ -101,6 +103,7 @@ async function remove(c: CategoryItem) {
     <el-button type="primary" @click="openCreate()">新建分类</el-button>
     <el-table :data="items" row-key="id" :tree-props="{ children: 'children' }" style="margin-top: 16px">
       <el-table-column prop="name" label="名称" width="200" />
+      <el-table-column prop="name_en" label="英文名称" width="200" />
       <el-table-column prop="slug" label="Slug" width="160" />
       <el-table-column prop="description" label="描述" />
       <el-table-column prop="content_count" label="内容数" width="90" />
@@ -129,6 +132,7 @@ async function remove(c: CategoryItem) {
           />
         </el-form-item>
         <el-form-item label="名称"><el-input v-model="form.name" @input="onNameInput" /></el-form-item>
+        <el-form-item label="英文名称"><el-input v-model="form.name_en" placeholder="英文模式显示的分类名（可空）" /></el-form-item>
         <el-form-item label="Slug"><el-input v-model="form.slug" placeholder="小写字母数字连字符" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
       </el-form>

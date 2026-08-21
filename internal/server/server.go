@@ -48,7 +48,16 @@ func New(cfg *config.Config, st store.Store, svc *content.Service, reg *i18n.Reg
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	s := &Server{
 		engine: nil, cfg: cfg, store: st, content: svc, i18n: reg,
-		seo:    seo.NewBuilder(cfg.Site.Name, cfg.Site.URL, cfg.Site.Description, reg),
+		seo: seo.NewBuilder(seo.Options{
+			SiteURL:      cfg.Site.URL,
+			Name:         cfg.Site.Name,
+			Description:  cfg.Site.Description,
+			Names:        cfg.Site.Names,
+			Descriptions: cfg.Site.Descriptions,
+			HomeTitles:   cfg.Site.HomeTitles,
+			DefaultLang:  cfg.Site.DefaultLang,
+			OGImage:      cfg.Site.OGImage,
+		}, reg),
 		themes: loader,
 		auth:   authSvc,
 		media:  medStore,

@@ -21,8 +21,8 @@ describe('category tree', () => {
   it('listCategories 返回树（children 嵌套）与扁平 all 对应', () => {
     const items: CategoryItem[] = [
       {
-        id: 1, parent_id: 0, name: '产品中心', slug: 'product', description: '', content_count: 0, total_content_count: 0,
-        children: [{ id: 2, parent_id: 1, name: '斩拌机', slug: 'emulsifier', description: '', content_count: 0, total_content_count: 0, children: [] }],
+        id: 1, parent_id: 0, name: '产品中心', name_en: 'Product Center', slug: 'product', description: '', content_count: 0, total_content_count: 0,
+        children: [{ id: 2, parent_id: 1, name: '斩拌机', name_en: 'Emulsifier', slug: 'emulsifier', description: '', content_count: 0, total_content_count: 0, children: [] }],
       },
     ]
     expect(items[0].children).toHaveLength(1)
@@ -56,7 +56,7 @@ describe('category parent 回显', () => {
 })
 
 describe('category delete guard', () => {
-  const base: CategoryItem = { id: 1, parent_id: 0, name: 'x', slug: 'x', description: '', content_count: 0, total_content_count: 0, children: [] }
+  const base: CategoryItem = { id: 1, parent_id: 0, name: 'x', name_en: '', slug: 'x', description: '', content_count: 0, total_content_count: 0, children: [] }
   it('有子分类 → 提示请先删除子分类，不调删除 API', () => {
     const c: CategoryItem = { ...base, children: [{ ...base, id: 2, parent_id: 1, name: '子' }] }
     expect(categoryDeleteGuard(c)).toBe('请先删除子分类')

@@ -8,7 +8,12 @@
 {{if .Meta.Description}}<meta name="description" content="{{.Meta.Description}}">{{end}}
 {{range .Meta.HrefLangs}}<link rel="alternate" hreflang="{{.Lang}}" href="{{.URL}}">{{end}}
 <link rel="canonical" href="{{.Meta.Canonical}}">
+<link rel="icon" type="image/png" href="{{asset "/img/favicon.png"}}">
 {{range $k, $v := .Meta.OGTags}}<meta property="og:{{$k}}" content="{{$v}}">{{end}}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{.Meta.Title}}">
+{{if .Meta.Description}}<meta name="twitter:description" content="{{.Meta.Description}}">{{end}}
+{{if .Meta.Image}}<meta name="twitter:image" content="{{.Meta.Image}}">{{end}}
 {{if .Meta.JSONLDScript}}{{.Meta.JSONLDScript}}{{end}}
 {{template "head" .}}
 </head>

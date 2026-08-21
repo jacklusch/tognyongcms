@@ -15,6 +15,7 @@ import (
 
 type categoryReq struct {
 	Name        string `json:"name"`
+	NameEn      string `json:"name_en"`
 	Slug        string `json:"slug"`
 	Description string `json:"description"`
 	ParentID    int64  `json:"parent_id"`
@@ -68,6 +69,7 @@ func buildCategoryTree(cats []store.Category, counts map[int64]int, totals map[i
 		id         int64
 		parentID   int64
 		name       string
+		nameEn     string
 		slug       string
 		desc       string
 		count      int
@@ -76,7 +78,7 @@ func buildCategoryTree(cats []store.Category, counts map[int64]int, totals map[i
 	}
 	byID := make(map[int64]*node, len(cats))
 	for _, c := range cats {
-		byID[c.ID] = &node{id: c.ID, parentID: c.ParentID, name: c.Name, slug: c.Slug, desc: c.Description, count: counts[c.ID], totalCount: totals[c.ID]}
+		byID[c.ID] = &node{id: c.ID, parentID: c.ParentID, name: c.Name, nameEn: c.NameEn, slug: c.Slug, desc: c.Description, count: counts[c.ID], totalCount: totals[c.ID]}
 	}
 	rootNodes := make([]*node, 0)
 	for _, c := range cats {
@@ -99,7 +101,7 @@ func buildCategoryTree(cats []store.Category, counts map[int64]int, totals map[i
 			children = append(children, toH(ch, path))
 		}
 		return gin.H{
-			"id": n.id, "parent_id": n.parentID, "name": n.name, "slug": n.slug,
+			"id": n.id, "parent_id": n.parentID, "name": n.name, "name_en": n.nameEn, "slug": n.slug,
 			"description": n.desc, "content_count": n.count, "total_content_count": n.totalCount, "children": children,
 		}
 	}
@@ -174,7 +176,7 @@ func (d *Deps) HandleCategoryCreate(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	cat := &store.Category{Name: req.Name, Slug: req.Slug, Description: req.Description, ParentID: req.ParentID}
+	cat := &store.Category{Name: req.Name, NameEn: req.NameEn, Slug: req.Slug, Description: req.Description, ParentID: req.ParentID}
 	if err := d.Store.CategoryRepo().Create(ctx, cat); err != nil {
 		fail(c, err)
 		return
@@ -201,7 +203,7 @@ func (d *Deps) HandleCategoryUpdate(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	cat := &store.Category{ID: id, Name: req.Name, Slug: req.Slug, Description: req.Description, ParentID: req.ParentID}
+	cat := &store.Category{ID: id, Name: req.Name, NameEn: req.NameEn, Slug: req.Slug, Description: req.Description, ParentID: req.ParentID}
 	if err := d.Store.CategoryRepo().Update(ctx, cat); err != nil {
 		fail(c, err)
 		return

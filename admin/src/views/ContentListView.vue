@@ -105,6 +105,29 @@ async function remove(id: number) {
   load()
 }
 
+const selected = ref<ContentEntry[]>([])
+
+function onSelectionChange(rows: ContentEntry[]) {
+  selected.value = rows
+}
+
+async function batchRemove() {
+  if (!selected.value.length) return
+  try {
+    await ElMessageBox.confirm(`确认删除选中的 ${selected.value.length} 条内容？`, '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    for (const row of selected.value) {
+      await deleteContent(row.content.id)
+    }
+    ElMessage.success(`已删除 ${selected.value.length} 条`)
+    selected.value = []
+    load()
+  } catch (e: any) {
+    ElMessage.error(e.message ?? '批量删除失败')
+  }
+}
+
 function statusTag(s: string) {
   return s === 'published' ? 'success' : 'info'
 }
@@ -142,10 +165,12 @@ function statusTag(s: string) {
       </el-form-item>
       <el-form-item>
         <el-button type="primary" @click="openNewDialog">新建</el-button>
+        <el-button type="danger" :disabled="!selected.length" @click="batchRemove">批量删除{{ selected.length ? `（${selected.length}）` : '' }}</el-button>
       </el-form-item>
     </el-form>
 
-    <el-table :data="items" v-loading="loading">
+    <el-table :data="items" v-loading="loading" @selection-change="onSelectionChange">
+      <el-table-column type="selection" width="48" />
       <el-table-column prop="content.title" label="标题" />
       <el-table-column prop="content.slug" label="Slug" />
       <el-table-column prop="category_name" label="分类" width="140" />

@@ -248,3 +248,78 @@ func TestTranslateValidateLangDomain(t *testing.T) {
 		t.Error("target_lang 不在 site.languages 应报错")
 	}
 }
+
+func TestSiteLocalized(t *testing.T) {
+	cfg := &Config{}
+	cfg.Site.DefaultLang = "zh"
+	cfg.Site.Name = "金博威机械"
+	cfg.Site.Description = "中文默认描述"
+	cfg.Site.Names = map[string]string{"en": "Jinbowei Machinery"}
+	cfg.Site.Descriptions = map[string]string{"en": "English description"}
+	cfg.Site.HomeTitles = map[string]string{"zh": "金博威机械 - 关键词首页", "en": "Jinbowei - Keywords"}
+	cfg.Site.OGImage = "/themes/default/img/og-default.png"
+
+	if got := cfg.Site.SiteName("en"); got != "Jinbowei Machinery" {
+		t.Errorf("SiteName(en) = %q", got)
+	}
+	if got := cfg.Site.SiteName("ja"); got != "金博威机械" {
+		t.Errorf("SiteName(ja) 应回退默认 = %q", got)
+	}
+	if got := cfg.Site.SiteDescription("en"); got != "English description" {
+		t.Errorf("SiteDescription(en) = %q", got)
+	}
+	if got := cfg.Site.SiteDescription("ja"); got != "中文默认描述" {
+		t.Errorf("SiteDescription(ja) 应回退默认 = %q", got)
+	}
+	if got := cfg.Site.HomeTitle("zh"); got != "金博威机械 - 关键词首页" {
+		t.Errorf("HomeTitle(zh) = %q", got)
+	}
+	if got := cfg.Site.HomeTitle("en"); got != "Jinbowei - Keywords" {
+		t.Errorf("HomeTitle(en) = %q", got)
+	}
+	if cfg.Site.OGImage != "/themes/default/img/og-default.png" {
+		t.Errorf("OGImage = %q", cfg.Site.OGImage)
+	}
+}
+
+func TestSiteLocalizedFallback(t *testing.T) {
+	// nil map：全部回退默认值
+	cfg := &Config{}
+	cfg.Site.Name = "金博威机械"
+	cfg.Site.Description = "中文默认描述"
+	if got := cfg.Site.SiteName("en"); got != "金博威机械" {
+		t.Errorf("nil Names SiteName(en) = %q, want 金博威机械", got)
+	}
+	if got := cfg.Site.SiteDescription("en"); got != "中文默认描述" {
+		t.Errorf("nil Descriptions SiteDescription(en) = %q, want 中文默认描述", got)
+	}
+	if got := cfg.Site.HomeTitle("zh"); got != "金博威机械" {
+		t.Errorf("nil HomeTitles HomeTitle(zh) = %q, want 金博威机械", got)
+	}
+
+	// 空串值：应回退默认值而非返回空串
+	cfg = &Config{}
+	cfg.Site.Name = "金博威机械"
+	cfg.Site.Description = "中文默认描述"
+	cfg.Site.Names = map[string]string{"en": ""}
+	cfg.Site.Descriptions = map[string]string{"en": ""}
+	cfg.Site.HomeTitles = map[string]string{"en": ""}
+	if got := cfg.Site.SiteName("en"); got != "金博威机械" {
+		t.Errorf("空串 Names SiteName(en) = %q, want 金博威机械", got)
+	}
+	if got := cfg.Site.SiteDescription("en"); got != "中文默认描述" {
+		t.Errorf("空串 Descriptions SiteDescription(en) = %q, want 中文默认描述", got)
+	}
+	if got := cfg.Site.HomeTitle("en"); got != "金博威机械" {
+		t.Errorf("空串 HomeTitles HomeTitle(en) = %q, want 金博威机械", got)
+	}
+
+	// HomeTitle 缺失某语言时回退到本地化 SiteName
+	cfg = &Config{}
+	cfg.Site.Name = "金博威机械"
+	cfg.Site.Names = map[string]string{"en": "Jinbowei Machinery"}
+	cfg.Site.HomeTitles = map[string]string{"zh": "金博威机械 - 关键词首页"}
+	if got := cfg.Site.HomeTitle("en"); got != "Jinbowei Machinery" {
+		t.Errorf("HomeTitle(en) 缺失应回退本地化名 = %q, want Jinbowei Machinery", got)
+	}
+}

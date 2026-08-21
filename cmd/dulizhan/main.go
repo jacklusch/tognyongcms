@@ -35,8 +35,8 @@ func main() {
 			cfg = &config.Config{}
 			cfg.Database.Driver = "sqlite"
 			cfg.Database.DSN = "dulizhan.db"
-			cfg.Site.Languages = []string{"zh", "en"}
-			cfg.Site.DefaultLang = "zh"
+			cfg.Site.Languages = []string{"en", "zh"}
+			cfg.Site.DefaultLang = "en"
 		}
 		st, err := sqlite.Open(cfg.Database.DSN)
 		if err != nil {

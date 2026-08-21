@@ -91,16 +91,22 @@ func Run(ctx context.Context, st store.Store, svc *content.Service, med media.Me
 
 // seedDemoData 建分类、双语演示文章与 main 菜单（幂等）。
 func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med media.MediaStore) error {
-	demoCategories := []struct{ Name, Slug string }{
-		{"新闻", "news"}, {"关于", "about"}, {"产品", "products"},
+	demoCategories := []struct{ Name, NameEn, Slug string }{
+		{"新闻", "News", "news"}, {"关于", "About", "about"}, {"产品", "Products", "products"},
 	}
 	catIDs := map[string]int64{}
 	for _, c := range demoCategories {
 		if existing, err := st.CategoryRepo().GetBySlug(ctx, c.Slug); err == nil {
+			if existing.NameEn == "" && c.NameEn != "" {
+				existing.NameEn = c.NameEn
+				if err := st.CategoryRepo().Update(ctx, &existing); err != nil {
+					return fmt.Errorf("回填分类 %s 英文名: %w", c.Slug, err)
+				}
+			}
 			catIDs[c.Slug] = existing.ID
 			continue
 		}
-		cat := &store.Category{Name: c.Name, Slug: c.Slug}
+		cat := &store.Category{Name: c.Name, NameEn: c.NameEn, Slug: c.Slug}
 		if err := st.CategoryRepo().Create(ctx, cat); err != nil {
 			return fmt.Errorf("创建分类 %s: %w", c.Slug, err)
 		}
@@ -108,16 +114,22 @@ func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med
 	}
 
 	// 子分类（幂等：GetBySlug 已存在跳过），ParentID = 父分类 id
-	subCategories := map[string][]struct{ Name, Slug string }{
-		"products": {{"斩拌机", "chopper"}, {"香肠机", "sausage-machine"}, {"拌馅机", "mixer"}},
+	subCategories := map[string][]struct{ Name, NameEn, Slug string }{
+		"products": {{"斩拌机", "Chopper", "chopper"}, {"香肠机", "Sausage Machine", "sausage-machine"}, {"拌馅机", "Mixer", "mixer"}},
 	}
 	for parentSlug, subs := range subCategories {
 		for _, sc := range subs {
 			if existing, err := st.CategoryRepo().GetBySlug(ctx, sc.Slug); err == nil {
+				if existing.NameEn == "" && sc.NameEn != "" {
+					existing.NameEn = sc.NameEn
+					if err := st.CategoryRepo().Update(ctx, &existing); err != nil {
+						return fmt.Errorf("回填子分类 %s 英文名: %w", sc.Slug, err)
+					}
+				}
 				catIDs[sc.Slug] = existing.ID
 				continue
 			}
-			cat := &store.Category{Name: sc.Name, Slug: sc.Slug, ParentID: catIDs[parentSlug]}
+			cat := &store.Category{Name: sc.Name, NameEn: sc.NameEn, Slug: sc.Slug, ParentID: catIDs[parentSlug]}
 			if err := st.CategoryRepo().Create(ctx, cat); err != nil {
 				return fmt.Errorf("创建子分类 %s: %w", sc.Slug, err)
 			}

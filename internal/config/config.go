@@ -38,17 +38,51 @@ type DatabaseConfig struct {
 }
 
 type SiteConfig struct {
-	Name          string   `yaml:"name"`
-	URL           string   `yaml:"url"`
-	DefaultLang   string   `yaml:"default_lang"`
-	Languages     []string `yaml:"languages"`
-	Theme         string   `yaml:"theme"`
-	ThemesDir     string   `yaml:"themes_dir"`
-	PrefixDefault bool     `yaml:"prefix_default_lang"`
-	Description   string   `yaml:"description"`
+	Name          string            `yaml:"name"`
+	URL           string            `yaml:"url"`
+	DefaultLang   string            `yaml:"default_lang"`
+	Languages     []string          `yaml:"languages"`
+	Theme         string            `yaml:"theme"`
+	ThemesDir     string            `yaml:"themes_dir"`
+	PrefixDefault bool              `yaml:"prefix_default_lang"`
+	Description   string            `yaml:"description"`
+	OGImage       string            `yaml:"og_image"`
+	Names         map[string]string `yaml:"names"`
+	Descriptions  map[string]string `yaml:"descriptions"`
+	HomeTitles    map[string]string `yaml:"home_titles"`
 
 	HomeProductsCategory string `yaml:"home_products_category"`
 	HomeNewsCategory     string `yaml:"home_news_category"`
+}
+
+// SiteName 按语言取品牌名，缺失回退 Name。
+func (s *SiteConfig) SiteName(lang string) string {
+	if s.Names != nil {
+		if v, ok := s.Names[lang]; ok && v != "" {
+			return v
+		}
+	}
+	return s.Name
+}
+
+// SiteDescription 按语言取 meta description，缺失回退 Description。
+func (s *SiteConfig) SiteDescription(lang string) string {
+	if s.Descriptions != nil {
+		if v, ok := s.Descriptions[lang]; ok && v != "" {
+			return v
+		}
+	}
+	return s.Description
+}
+
+// HomeTitle 按语言取首页 title（含关键词），缺失回退 SiteName。
+func (s *SiteConfig) HomeTitle(lang string) string {
+	if s.HomeTitles != nil {
+		if v, ok := s.HomeTitles[lang]; ok && v != "" {
+			return v
+		}
+	}
+	return s.SiteName(lang)
 }
 
 type MediaConfig struct {

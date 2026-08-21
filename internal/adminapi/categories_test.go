@@ -251,6 +251,57 @@ type catTreeNode struct {
 	Children          []catTreeNode `json:"children"`
 }
 
+func TestCategoryNameEnAPI(t *testing.T) {
+	e := newEnv(t)
+	tok := e.login(t)
+	// 创建带 name_en
+	var created struct {
+		Data struct {
+			Category struct {
+				ID     int64  `json:"id"`
+				Name   string `json:"name"`
+				NameEn string `json:"name_en"`
+			} `json:"category"`
+		} `json:"data"`
+	}
+	w := e.do(t, http.MethodPost, "/api/categories", `{"name":"产品","name_en":"Products","slug":"prod-en"}`, tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create = %d %s", w.Code, w.Body.String())
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	if created.Data.Category.NameEn != "Products" {
+		t.Errorf("create name_en = %q", created.Data.Category.NameEn)
+	}
+	// 更新 name_en
+	w = e.do(t, http.MethodPut, "/api/categories/"+strconv.FormatInt(created.Data.Category.ID, 10),
+		`{"name":"产品","name_en":"Product","slug":"prod-en"}`, tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update = %d %s", w.Code, w.Body.String())
+	}
+	// 列表返回 name_en
+	var list struct {
+		Data struct {
+			Items []struct {
+				NameEn string `json:"name_en"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	w = e.do(t, http.MethodGet, "/api/categories", "", tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list = %d %s", w.Code, w.Body.String())
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &list)
+	found := false
+	for _, it := range list.Data.Items {
+		if it.NameEn == "Product" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("列表未返回 name_en=Product: %+v", list.Data.Items)
+	}
+}
+
 func TestCategoriesCountByLang(t *testing.T) {
 	e := newEnv(t)
 	tok := e.login(t)
