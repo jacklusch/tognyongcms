@@ -24,4 +24,21 @@
   Array.prototype.forEach.call(frames, function (f) {
     if (!f.hasAttribute('loading')) f.setAttribute('loading', 'lazy');
   });
+  // 右下角微信悬浮：点按图标在左侧弹出/收起二维码
+  // 注意：悬浮层在 body 模板末尾之后渲染，须等 DOMContentLoaded 后再绑定
+  document.addEventListener('DOMContentLoaded', function () {
+    var wxBtn = document.querySelector('.float-wechat');
+    var wxPop = document.querySelector('.float-wechat-pop');
+    if (wxBtn && wxPop) {
+      wxBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        wxPop.classList.toggle('open');
+      });
+      document.addEventListener('click', function (e) {
+        if (wxPop.classList.contains('open') && !wxPop.contains(e.target) && !wxBtn.contains(e.target)) {
+          wxPop.classList.remove('open');
+        }
+      });
+    }
+  });
 })();
