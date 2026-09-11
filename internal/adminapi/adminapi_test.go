@@ -35,6 +35,7 @@ type env struct {
 	st   store.Store
 	svc  *content.Service
 	auth *auth.Service
+	cfg  *config.Config
 }
 
 func newEnv(t *testing.T) *env {
@@ -64,7 +65,7 @@ func newEnv(t *testing.T) *env {
 	cfg.Site.Theme = "default"
 	d := Deps{Store: st, Auth: authSvc, Content: svc, Media: media.NewLocalStore(t.TempDir(), "/media"), Cfg: cfg}
 	Register(g.Group("/api"), d)
-	return &env{g: g, st: st, svc: svc, auth: authSvc}
+	return &env{g: g, st: st, svc: svc, auth: authSvc, cfg: cfg}
 }
 
 func (e *env) do(t *testing.T, method, path, body, token string) *httptest.ResponseRecorder {
@@ -162,7 +163,7 @@ func TestContentOwnershipForbidden(t *testing.T) {
 	}
 	authorTok, _ := e.auth.Login(ctx, "alice", "secret123")
 	// author 建内容
-	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"作者文章","slug":"alice-post","content":"<p>正文</p>"}}`, authorTok)
+	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"作者文章","slug":"alice-post","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"}}`, authorTok)
 	if w.Code != http.StatusOK {
 		t.Fatalf("author create = %d %s", w.Code, w.Body.String())
 	}
@@ -186,7 +187,7 @@ func TestContentOwnershipForbidden(t *testing.T) {
 	// —— canManage 归属路径 ——
 	// admin 登录建一篇他人内容
 	adminTok := e.login(t)
-	w = e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"他人文章","slug":"admin-post","content":"<p>正文</p>"}}`, adminTok)
+	w = e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"他人文章","slug":"admin-post","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"}}`, adminTok)
 	if w.Code != http.StatusOK {
 		t.Fatalf("admin create = %d %s", w.Code, w.Body.String())
 	}
@@ -212,7 +213,7 @@ func TestContentOwnershipForbidden(t *testing.T) {
 		t.Errorf("author delete 他人 = %d, want 403", w.Code)
 	}
 	// 正向：author 修改自己内容 → 200（归属放行）
-	w = e.do(t, http.MethodPut, fmt.Sprintf("/api/content/%d", id), `{"data":{"title":"改自","slug":"alice-post","content":"<p>正文2</p>"}}`, authorTok)
+	w = e.do(t, http.MethodPut, fmt.Sprintf("/api/content/%d", id), `{"data":{"title":"改自","slug":"alice-post","content":"<p>正文2</p>","published_on":"2026-01-15","category":"1"}}`, authorTok)
 	if w.Code != http.StatusOK {
 		t.Errorf("author update 自己 = %d, want 200", w.Code)
 	}
@@ -336,7 +337,7 @@ func TestTypePermScoped(t *testing.T) {
 	}
 	authorTok, _ := e.auth.Login(ctx, "alice", "secret123")
 	// author 建内容（Create 走基础 content.write 门禁 + service canManage 归属，可过）
-	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"作者文章","slug":"author-post","content":"<p>正文</p>"}}`, authorTok)
+	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"作者文章","slug":"author-post","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"}}`, authorTok)
 	if w.Code != http.StatusOK {
 		t.Fatalf("author create = %d %s", w.Code, w.Body.String())
 	}
@@ -443,7 +444,7 @@ func TestAuthorSelfTranslation(t *testing.T) {
 	}
 	authorTok, _ := e.auth.Login(ctx, "carol", "secret123")
 	// author 建内容
-	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"原文","slug":"orig","content":"<p>x</p>"}}`, authorTok)
+	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"原文","slug":"orig","content":"<p>x</p>","published_on":"2026-01-15","category":"1"}}`, authorTok)
 	if w.Code != http.StatusOK {
 		t.Fatalf("author create = %d %s", w.Code, w.Body.String())
 	}
@@ -462,7 +463,7 @@ func TestAuthorSelfTranslation(t *testing.T) {
 		t.Fatal("创建未回填 ID")
 	}
 	// I2：author 给自己内容加翻译 → 200（移除类型级读权限，归属由 service Actor 校验放行）
-	w = e.do(t, http.MethodPost, fmt.Sprintf("/api/content/%d/translate", id), `{"type":"article","lang":"en","data":{"title":"En","content":"<p>e</p>"}}`, authorTok)
+	w = e.do(t, http.MethodPost, fmt.Sprintf("/api/content/%d/translate", id), `{"type":"article","lang":"en","data":{"title":"En","content":"<p>e</p>","published_on":"2026-01-15","category":"1"}}`, authorTok)
 	if w.Code != http.StatusOK {
 		t.Errorf("author 自翻译 = %d, want 200: %s", w.Code, w.Body.String())
 	}

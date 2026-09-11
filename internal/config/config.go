@@ -9,10 +9,21 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	Site     SiteConfig     `yaml:"site"`
-	Media    MediaConfig    `yaml:"media"`
+	Server    ServerConfig    `yaml:"server"`
+	Database  DatabaseConfig  `yaml:"database"`
+	Site      SiteConfig      `yaml:"site"`
+	Media     MediaConfig     `yaml:"media"`
+	Translate TranslateConfig `yaml:"translate"`
+}
+
+type TranslateConfig struct {
+	Enabled    bool   `yaml:"enabled"`
+	Provider   string `yaml:"provider"`
+	APIKey     string `yaml:"api_key"`
+	BaseURL    string `yaml:"base_url"`
+	Model      string `yaml:"model"`
+	SourceLang string `yaml:"source_lang"`
+	TargetLang string `yaml:"target_lang"`
 }
 
 type ServerConfig struct {
@@ -27,14 +38,51 @@ type DatabaseConfig struct {
 }
 
 type SiteConfig struct {
-	Name          string   `yaml:"name"`
-	URL           string   `yaml:"url"`
-	DefaultLang   string   `yaml:"default_lang"`
-	Languages     []string `yaml:"languages"`
-	Theme         string   `yaml:"theme"`
-	ThemesDir     string   `yaml:"themes_dir"`
-	PrefixDefault bool     `yaml:"prefix_default_lang"`
-	Description   string   `yaml:"description"`
+	Name          string            `yaml:"name"`
+	URL           string            `yaml:"url"`
+	DefaultLang   string            `yaml:"default_lang"`
+	Languages     []string          `yaml:"languages"`
+	Theme         string            `yaml:"theme"`
+	ThemesDir     string            `yaml:"themes_dir"`
+	PrefixDefault bool              `yaml:"prefix_default_lang"`
+	Description   string            `yaml:"description"`
+	OGImage       string            `yaml:"og_image"`
+	Names         map[string]string `yaml:"names"`
+	Descriptions  map[string]string `yaml:"descriptions"`
+	HomeTitles    map[string]string `yaml:"home_titles"`
+
+	HomeProductsCategory string `yaml:"home_products_category"`
+	HomeNewsCategory     string `yaml:"home_news_category"`
+}
+
+// SiteName 按语言取品牌名，缺失回退 Name。
+func (s *SiteConfig) SiteName(lang string) string {
+	if s.Names != nil {
+		if v, ok := s.Names[lang]; ok && v != "" {
+			return v
+		}
+	}
+	return s.Name
+}
+
+// SiteDescription 按语言取 meta description，缺失回退 Description。
+func (s *SiteConfig) SiteDescription(lang string) string {
+	if s.Descriptions != nil {
+		if v, ok := s.Descriptions[lang]; ok && v != "" {
+			return v
+		}
+	}
+	return s.Description
+}
+
+// HomeTitle 按语言取首页 title（含关键词），缺失回退 SiteName。
+func (s *SiteConfig) HomeTitle(lang string) string {
+	if s.HomeTitles != nil {
+		if v, ok := s.HomeTitles[lang]; ok && v != "" {
+			return v
+		}
+	}
+	return s.SiteName(lang)
 }
 
 type MediaConfig struct {
@@ -84,11 +132,21 @@ func applyEnv(cfg *Config) {
 	set("SITE_NAME", &cfg.Site.Name)
 	set("SITE_THEME", &cfg.Site.Theme)
 	set("SITE_DEFAULT_LANG", &cfg.Site.DefaultLang)
+	set("SITE_HOME_PRODUCTS_CATEGORY", &cfg.Site.HomeProductsCategory)
+	set("SITE_HOME_NEWS_CATEGORY", &cfg.Site.HomeNewsCategory)
 	set("MEDIA_DRIVER", &cfg.Media.Driver)
 	if v, ok := os.LookupEnv("DULIZHAN_SITE_LANGUAGES"); ok && v != "" {
 		cfg.Site.Languages = strings.Split(v, ",")
 	}
 	applyS3Env(cfg)
+	if v, ok := os.LookupEnv("DULIZHAN_TRANSLATE_ENABLED"); ok && v == "true" {
+		cfg.Translate.Enabled = true
+	}
+	set("TRANSLATE_API_KEY", &cfg.Translate.APIKey)
+	set("TRANSLATE_BASE_URL", &cfg.Translate.BaseURL)
+	set("TRANSLATE_MODEL", &cfg.Translate.Model)
+	set("TRANSLATE_SOURCE_LANG", &cfg.Translate.SourceLang)
+	set("TRANSLATE_TARGET_LANG", &cfg.Translate.TargetLang)
 }
 
 func applyS3Env(cfg *Config) {
@@ -153,5 +211,40 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("media.s3.bucket 必填（driver=s3 时）")
 		}
 	}
+	if c.Translate.Enabled {
+		if c.Translate.APIKey == "" {
+			return fmt.Errorf("translate.api_key 必填（enabled=true 时）")
+		}
+		if c.Translate.BaseURL == "" {
+			c.Translate.BaseURL = "https://api.openai.com/v1"
+		}
+		if c.Translate.Model == "" {
+			return fmt.Errorf("translate.model 必填（enabled=true 时）")
+		}
+		if c.Translate.SourceLang == "" {
+			c.Translate.SourceLang = c.Site.DefaultLang
+		}
+		if c.Translate.TargetLang == "" {
+			return fmt.Errorf("translate.target_lang 必填（enabled=true 时）")
+		}
+		if c.Translate.SourceLang == c.Translate.TargetLang {
+			return fmt.Errorf("translate.source_lang 与 target_lang 不能相同")
+		}
+		if !containsString(c.Site.Languages, c.Translate.SourceLang) {
+			return fmt.Errorf("translate.source_lang %q 不在 site.languages 中", c.Translate.SourceLang)
+		}
+		if !containsString(c.Site.Languages, c.Translate.TargetLang) {
+			return fmt.Errorf("translate.target_lang %q 不在 site.languages 中", c.Translate.TargetLang)
+		}
+	}
 	return nil
+}
+
+func containsString(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

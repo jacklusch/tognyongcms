@@ -4,6 +4,9 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+
+	"dulizhan/internal/content"
+	"dulizhan/internal/store"
 )
 
 // HandleSearch 内容搜索：GET /api/search?type=&lang=&q=&page=&per_page=
@@ -35,10 +38,39 @@ func (d *Deps) HandleSearch(c *gin.Context) {
 	if perPage < 1 {
 		perPage = 20
 	}
-	items, total, err := d.Content.Search(c.Request.Context(), typeName, lang, q, page, perPage)
+	category := c.Query("category")
+	var items []content.Entry
+	var total int
+	var err error
+	if category != "" {
+		cid, convErr := strconv.ParseInt(category, 10, 64)
+		if convErr != nil {
+			badRequest(c, "category 参数必须是分类 id")
+			return
+		}
+		items, total, err = d.Content.SearchByTypeLangCategory(c.Request.Context(), typeName, lang, q, cid, page, perPage)
+	} else {
+		items, total, err = d.Content.Search(c.Request.Context(), typeName, lang, q, page, perPage)
+	}
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	respondOK(c, gin.H{"items": items, "total": total})
+	type outEntry struct {
+		Content      store.Content  `json:"content"`
+		TypeName     string         `json:"type_name"`
+		Fields       map[string]any `json:"fields"`
+		CategoryName string         `json:"category_name,omitempty"`
+	}
+	ctx := c.Request.Context()
+	out := make([]outEntry, 0, len(items))
+	for _, it := range items {
+		out = append(out, outEntry{
+			Content:      it.Content,
+			TypeName:     it.TypeName,
+			Fields:       it.Fields,
+			CategoryName: d.categoryName(ctx, it),
+		})
+	}
+	respondOK(c, gin.H{"items": out, "total": total})
 }

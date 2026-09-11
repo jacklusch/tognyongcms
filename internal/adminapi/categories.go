@@ -15,6 +15,7 @@ import (
 
 type categoryReq struct {
 	Name        string `json:"name"`
+	NameEn      string `json:"name_en"`
 	Slug        string `json:"slug"`
 	Description string `json:"description"`
 	ParentID    int64  `json:"parent_id"`
@@ -32,38 +33,52 @@ func slugify(name string) string {
 
 func (d *Deps) HandleCategories(c *gin.Context) {
 	ctx := c.Request.Context()
+	lang := c.Query("lang")
+	if lang == "" {
+		lang = d.Cfg.Site.DefaultLang
+	}
 	items, err := d.Store.CategoryRepo().List(ctx)
 	if err != nil {
 		fail(c, err)
 		return
 	}
 	counts := make(map[int64]int, len(items))
+	totals := make(map[int64]int, len(items))
 	for _, it := range items {
-		n, err := d.Store.CategoryRepo().CountContent(ctx, it.ID)
+		n, err := d.Store.CategoryRepo().CountContentByLang(ctx, it.ID, lang)
 		if err != nil {
 			fail(c, err)
 			return
 		}
 		counts[it.ID] = n
+		total, err := d.Store.CategoryRepo().CountContent(ctx, it.ID)
+		if err != nil {
+			fail(c, err)
+			return
+		}
+		totals[it.ID] = total
 	}
-	roots, all := buildCategoryTree(items, counts)
+	roots, all := buildCategoryTree(items, counts, totals)
 	respondOK(c, gin.H{"items": roots, "all": all})
 }
 
 // buildCategoryTree 把分类按 parent_id 挂成树返回 roots；all 为扁平 {id, path}（path 为父链拼接，顶级为 name）。
-func buildCategoryTree(cats []store.Category, counts map[int64]int) (roots []gin.H, all []gin.H) {
+// counts 为按当前语言的内容数，totals 为全语言内容数（供删除守卫用）。
+func buildCategoryTree(cats []store.Category, counts map[int64]int, totals map[int64]int) (roots []gin.H, all []gin.H) {
 	type node struct {
-		id       int64
-		parentID int64
-		name     string
-		slug     string
-		desc     string
-		count    int
-		children []*node
+		id         int64
+		parentID   int64
+		name       string
+		nameEn     string
+		slug       string
+		desc       string
+		count      int
+		totalCount int
+		children   []*node
 	}
 	byID := make(map[int64]*node, len(cats))
 	for _, c := range cats {
-		byID[c.ID] = &node{id: c.ID, parentID: c.ParentID, name: c.Name, slug: c.Slug, desc: c.Description, count: counts[c.ID]}
+		byID[c.ID] = &node{id: c.ID, parentID: c.ParentID, name: c.Name, nameEn: c.NameEn, slug: c.Slug, desc: c.Description, count: counts[c.ID], totalCount: totals[c.ID]}
 	}
 	rootNodes := make([]*node, 0)
 	for _, c := range cats {
@@ -86,8 +101,8 @@ func buildCategoryTree(cats []store.Category, counts map[int64]int) (roots []gin
 			children = append(children, toH(ch, path))
 		}
 		return gin.H{
-			"id": n.id, "parent_id": n.parentID, "name": n.name, "slug": n.slug,
-			"description": n.desc, "content_count": n.count, "children": children,
+			"id": n.id, "parent_id": n.parentID, "name": n.name, "name_en": n.nameEn, "slug": n.slug,
+			"description": n.desc, "content_count": n.count, "total_content_count": n.totalCount, "children": children,
 		}
 	}
 	roots = make([]gin.H, 0, len(rootNodes))
@@ -161,7 +176,7 @@ func (d *Deps) HandleCategoryCreate(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	cat := &store.Category{Name: req.Name, Slug: req.Slug, Description: req.Description, ParentID: req.ParentID}
+	cat := &store.Category{Name: req.Name, NameEn: req.NameEn, Slug: req.Slug, Description: req.Description, ParentID: req.ParentID}
 	if err := d.Store.CategoryRepo().Create(ctx, cat); err != nil {
 		fail(c, err)
 		return
@@ -188,7 +203,7 @@ func (d *Deps) HandleCategoryUpdate(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	cat := &store.Category{ID: id, Name: req.Name, Slug: req.Slug, Description: req.Description, ParentID: req.ParentID}
+	cat := &store.Category{ID: id, Name: req.Name, NameEn: req.NameEn, Slug: req.Slug, Description: req.Description, ParentID: req.ParentID}
 	if err := d.Store.CategoryRepo().Update(ctx, cat); err != nil {
 		fail(c, err)
 		return

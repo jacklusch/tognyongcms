@@ -41,6 +41,10 @@ func Open(dsn string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	if err := migrateCategoriesNameEn(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	return &Store{db: db}, nil
 }
 
@@ -274,6 +278,55 @@ func (r *contentRepo) ListByTypeLangStatus(ctx context.Context, typeName, lang, 
 	return out, rows.Err()
 }
 
+func (r *contentRepo) ListByTypeLangStatusCategory(ctx context.Context, typeName, lang, status string, categoryID int64, offset, limit int) ([]store.Content, error) {
+	query := "SELECT " + contentCols + " FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=?"
+	args := []any{typeName}
+	if lang != "" {
+		query += " AND c.lang=?"
+		args = append(args, lang)
+	}
+	if status != "" {
+		query += " AND c.status=?"
+		args = append(args, status)
+	}
+	query += " AND c.payload LIKE ?"
+	args = append(args, "%\"category\":\""+itoa64(categoryID)+"\"%")
+	query += " ORDER BY c.published_at DESC, c.id DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Content
+	for rows.Next() {
+		c, err := scanContent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (r *contentRepo) CountByTypeLangStatusCategory(ctx context.Context, typeName, lang, status string, categoryID int64) (int, error) {
+	query := "SELECT COUNT(*) FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=?"
+	args := []any{typeName}
+	if lang != "" {
+		query += " AND c.lang=?"
+		args = append(args, lang)
+	}
+	if status != "" {
+		query += " AND c.status=?"
+		args = append(args, status)
+	}
+	query += " AND c.payload LIKE ?"
+	args = append(args, "%\"category\":\""+itoa64(categoryID)+"\"%")
+	var n int
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&n)
+	return n, err
+}
+
 func (r *contentRepo) CountByTypeLangStatus(ctx context.Context, typeName, lang, status string) (int, error) {
 	query := "SELECT COUNT(*) FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=?"
 	args := []any{typeName}
@@ -334,6 +387,34 @@ func (r *contentRepo) CountSearch(ctx context.Context, typeName, lang, q string)
 	err := r.db.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=? AND c.lang=? AND (c.title LIKE ? OR c.slug LIKE ?)",
 		typeName, lang, like, like).Scan(&n)
+	return n, err
+}
+
+func (r *contentRepo) SearchByTypeLangCategory(ctx context.Context, typeName, lang, q string, categoryID int64, offset, limit int) ([]store.Content, error) {
+	query := "SELECT " + contentCols + " FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=? AND c.lang=? AND (c.title LIKE ? OR c.slug LIKE ?) AND c.payload LIKE ? ORDER BY c.id DESC LIMIT ? OFFSET ?"
+	like := "%" + q + "%"
+	rows, err := r.db.QueryContext(ctx, query, typeName, lang, like, like, "%\"category\":\""+itoa64(categoryID)+"\"%", limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Content
+	for rows.Next() {
+		c, err := scanContent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (r *contentRepo) CountSearchCategory(ctx context.Context, typeName, lang, q string, categoryID int64) (int, error) {
+	var n int
+	like := "%" + q + "%"
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM content c JOIN content_types t ON t.id = c.content_type_id WHERE t.name=? AND c.lang=? AND (c.title LIKE ? OR c.slug LIKE ?) AND c.payload LIKE ?",
+		typeName, lang, like, like, "%\"category\":\""+itoa64(categoryID)+"\"%").Scan(&n)
 	return n, err
 }
 
@@ -671,7 +752,7 @@ func (s *Store) CategoryRepo() store.CategoryRepo { return &categoryRepo{db: s.d
 func itoa64(id int64) string { return strconv.FormatInt(id, 10) }
 
 func (r *categoryRepo) List(ctx context.Context) ([]store.Category, error) {
-	rows, err := r.db.QueryContext(ctx, "SELECT id, parent_id, name, slug, description, created_at FROM categories ORDER BY id")
+	rows, err := r.db.QueryContext(ctx, "SELECT id, parent_id, name, name_en, slug, description, created_at FROM categories ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -688,18 +769,18 @@ func (r *categoryRepo) List(ctx context.Context) ([]store.Category, error) {
 }
 
 func (r *categoryRepo) GetByID(ctx context.Context, id int64) (store.Category, error) {
-	return scanCategory(r.db.QueryRowContext(ctx, "SELECT id, parent_id, name, slug, description, created_at FROM categories WHERE id = ?", id))
+	return scanCategory(r.db.QueryRowContext(ctx, "SELECT id, parent_id, name, name_en, slug, description, created_at FROM categories WHERE id = ?", id))
 }
 
 func (r *categoryRepo) GetBySlug(ctx context.Context, slug string) (store.Category, error) {
-	return scanCategory(r.db.QueryRowContext(ctx, "SELECT id, parent_id, name, slug, description, created_at FROM categories WHERE slug = ?", slug))
+	return scanCategory(r.db.QueryRowContext(ctx, "SELECT id, parent_id, name, name_en, slug, description, created_at FROM categories WHERE slug = ?", slug))
 }
 
 func (r *categoryRepo) Create(ctx context.Context, c *store.Category) error {
 	c.CreatedAt = time.Now().UTC()
 	res, err := r.db.ExecContext(ctx,
-		"INSERT INTO categories (name, slug, description, created_at, parent_id) VALUES (?,?,?,?,?)",
-		c.Name, c.Slug, c.Description, c.CreatedAt.Format(tsLayout), c.ParentID)
+		"INSERT INTO categories (name, name_en, slug, description, created_at, parent_id) VALUES (?,?,?,?,?,?)",
+		c.Name, c.NameEn, c.Slug, c.Description, c.CreatedAt.Format(tsLayout), c.ParentID)
 	if err != nil {
 		return wrapUnique(err, "分类 slug 已存在")
 	}
@@ -708,8 +789,8 @@ func (r *categoryRepo) Create(ctx context.Context, c *store.Category) error {
 }
 
 func (r *categoryRepo) Update(ctx context.Context, c *store.Category) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE categories SET name=?, slug=?, description=?, parent_id=? WHERE id=?",
-		c.Name, c.Slug, c.Description, c.ParentID, c.ID)
+	_, err := r.db.ExecContext(ctx, "UPDATE categories SET name=?, name_en=?, slug=?, description=?, parent_id=? WHERE id=?",
+		c.Name, c.NameEn, c.Slug, c.Description, c.ParentID, c.ID)
 	return wrapUnique(err, "分类 slug 已存在")
 }
 
@@ -724,8 +805,16 @@ func (r *categoryRepo) CountContent(ctx context.Context, id int64) (int, error) 
 	return n, err
 }
 
+func (r *categoryRepo) CountContentByLang(ctx context.Context, id int64, lang string) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM content WHERE payload LIKE ? AND lang=?`,
+		"%\"category\":\""+itoa64(id)+"\"%", lang).Scan(&n)
+	return n, err
+}
+
 func (r *categoryRepo) ListChildren(ctx context.Context, parentID int64) ([]store.Category, error) {
-	rows, err := r.db.QueryContext(ctx, "SELECT id, parent_id, name, slug, description, created_at FROM categories WHERE parent_id = ? ORDER BY id", parentID)
+	rows, err := r.db.QueryContext(ctx, "SELECT id, parent_id, name, name_en, slug, description, created_at FROM categories WHERE parent_id = ? ORDER BY id", parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -749,7 +838,7 @@ func (r *categoryRepo) Descendants(ctx context.Context, id int64) ([]store.Categ
 			UNION ALL
 			SELECT c.id FROM categories c JOIN descs d ON c.parent_id = d.id
 		)
-		SELECT c.id, c.parent_id, c.name, c.slug, c.description, c.created_at
+		SELECT c.id, c.parent_id, c.name, c.name_en, c.slug, c.description, c.created_at
 		FROM categories c JOIN descs d ON c.id = d.id ORDER BY c.id`, id)
 	if err != nil {
 		return nil, err
@@ -769,7 +858,7 @@ func (r *categoryRepo) Descendants(ctx context.Context, id int64) ([]store.Categ
 func scanCategory(row interface{ Scan(...any) error }) (store.Category, error) {
 	var c store.Category
 	var created string
-	err := row.Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug, &c.Description, &created)
+	err := row.Scan(&c.ID, &c.ParentID, &c.Name, &c.NameEn, &c.Slug, &c.Description, &created)
 	if err != nil {
 		return c, wrapErr(err)
 	}

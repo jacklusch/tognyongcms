@@ -8,12 +8,31 @@
 {{if .Meta.Description}}<meta name="description" content="{{.Meta.Description}}">{{end}}
 {{range .Meta.HrefLangs}}<link rel="alternate" hreflang="{{.Lang}}" href="{{.URL}}">{{end}}
 <link rel="canonical" href="{{.Meta.Canonical}}">
+<link rel="icon" type="image/png" href="{{asset "/img/favicon.png"}}">
 {{range $k, $v := .Meta.OGTags}}<meta property="og:{{$k}}" content="{{$v}}">{{end}}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{.Meta.Title}}">
+{{if .Meta.Description}}<meta name="twitter:description" content="{{.Meta.Description}}">{{end}}
+{{if .Meta.Image}}<meta name="twitter:image" content="{{.Meta.Image}}">{{end}}
 {{if .Meta.JSONLDScript}}{{.Meta.JSONLDScript}}{{end}}
 {{template "head" .}}
 </head>
 <body>
 {{template "body" .}}
+<div class="floating-contact">
+  <a class="float-btn float-whatsapp" href="https://wa.me/85240947762?text=Hi%20Jinbowei%20Machinery%2C%20I%27m%20interested%20in%20your%20products." target="_blank" rel="noopener" aria-label="WhatsApp">
+    <img src="{{asset "/img/chat-whatsapp_80.png"}}" alt="WhatsApp">
+  </a>
+  <div class="float-wechat-wrap">
+    <button type="button" class="float-btn float-wechat" aria-label="WeChat">
+      <img src="{{asset "/img/chat-wechat_80.png"}}" alt="WeChat">
+    </button>
+    <div class="float-wechat-pop">
+      <img src="{{asset "/img/wechat-qr.png"}}" alt="WeChat QR">
+      <span>微信扫码添加好友</span>
+    </div>
+  </div>
+</div>
 </body>
 </html>
 {{end}}

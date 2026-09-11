@@ -1,0 +1,12 @@
+{{define "footer"}}
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div>
+      {{range menu $ "footer"}}<a href="{{.URL}}">{{.Label}}</a>{{end}}
+      <a href="{{home $.Lang}}">{{t $.Lang "home"}}</a>
+    </div>
+    <p class="copy">© {{.Site.Name}} · {{t $.Lang "copyright"}}</p>
+    <a class="back-top" href="#top">BACK TO TOP ↑</a>
+  </div>
+</footer>
+{{end}}

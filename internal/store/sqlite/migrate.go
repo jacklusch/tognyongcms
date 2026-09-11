@@ -58,3 +58,16 @@ CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories (parent_id);
 `)
 	return err
 }
+
+// migrateCategoriesNameEn 迁移守卫：给 categories 表补 name_en 列（英文名，可空）。
+func migrateCategoriesNameEn(db *sql.DB) error {
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('categories') WHERE name = 'name_en'").Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err := db.Exec("ALTER TABLE categories ADD COLUMN name_en TEXT NOT NULL DEFAULT '';")
+	return err
+}

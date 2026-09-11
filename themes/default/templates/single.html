@@ -3,20 +3,23 @@
 {{end}}
 {{define "body"}}
 {{template "nav" .}}
-<main class="container">
+<main class="container" style="padding-top:40px;padding-bottom:64px">
   <article class="entry">
-    {{if .Entry.Fields.cover}}<img src="{{media .Entry.Fields.cover}}" class="entry-hero" alt="">{{end}}
-    {{if .EntryCategory}}<div class="entry-category">分类：{{if .EntryCategoryURL}}<a href="{{.EntryCategoryURL}}">{{.EntryCategory}}</a>{{else}}{{.EntryCategory}}{{end}}</div>{{end}}
+    {{if .Entry.Fields.cover}}<img src="{{media .Entry.Fields.cover}}" class="entry-hero" alt="{{.Entry.Content.Title}}">{{end}}
+    {{if .EntryCategory}}
+    <div class="entry-category">
+      {{if .EntryCategoryURL}}<a href="{{.EntryCategoryURL}}">{{.EntryCategory}}</a>{{else}}{{.EntryCategory}}{{end}}
+    </div>
+    {{end}}
     <h1>{{.Entry.Content.Title}}</h1>
-    {{if .Entry.Content.PublishedAt}}<time class="entry-date">{{.Entry.Content.PublishedAt}}</time>{{end}}
+    {{if .Entry.Content.PublishedAt}}<time class="entry-date">{{.Entry.Content.PublishedAt.Format "2006-01-02 15:04:05"}}</time>{{end}}
     {{range $name, $field := .Entry.Fields}}
-      {{if and (ne $name "title") (ne $name "slug") (ne $name "excerpt")}}
-        {{if or (eq $name "content")}}
-        <div class="entry-content">{{raw $field}}</div>
-        {{end}}
+      {{if eq $name "content"}}
+      <div class="entry-content">{{raw $field}}</div>
       {{end}}
     {{end}}
   </article>
 </main>
 {{template "footer" .}}
+<script src="{{asset "/js/main.js"}}"></script>
 {{end}}

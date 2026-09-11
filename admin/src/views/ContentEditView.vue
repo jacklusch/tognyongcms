@@ -2,13 +2,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getContent, createContent, updateContent, publishContent, unpublishContent, listTranslations, createTranslation, type ContentEntry } from '../api/content'
+import { getContent, createContent, updateContent, publishContent, unpublishContent, listTranslations, createTranslation, type ContentEntry, type AutoTranslateStatus } from '../api/content'
 import { listContentTypes, type ContentTypeItem } from '../api/content-types'
 import { fetchMeta, type MetaData } from '../api/meta'
 import DynamicForm from '../dynamic-form/DynamicForm.vue'
 import { validateForm } from '../dynamic-form/registry'
 import type { FormValues } from '../dynamic-form/types'
-import { resolveSwitchTab } from './content-edit-tabs'
+import { resolveSwitchTab, orderLangTabs, defaultEditorLang } from './content-edit-tabs'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
@@ -22,12 +22,13 @@ const isNew = computed(() => !id.value)
 const currentType = ref<ContentTypeItem | null>(null)
 const currentLang = ref('')
 const activeTab = ref('')
+const currentEntryId = ref<number | null>(null)
 const translations = ref<ContentEntry[]>([])
 const form = ref<FormValues>({})
 const loading = ref(false)
 const saving = ref(false)
 
-const langTabs = computed(() => meta.value?.languages ?? [])
+const langTabs = computed(() => orderLangTabs(meta.value?.languages ?? []))
 const fields = computed(() => currentType.value?.fields ?? [])
 
 // 非 translatable 字段跨语言共享：从首个已有翻译取共享值
@@ -60,13 +61,15 @@ async function loadTranslations(contentId: number) {
   }
 }
 
-async function loadEdit(contentId: number) {
+async function loadEdit(contentId: number, preferLang?: string) {
   const { content } = await getContent(contentId)
   const byLang = await loadTranslations(contentId)
   currentType.value = types.value.find((t) => t.name === content.type_name) ?? null
   currentLang.value = content.content.lang
-  activeTab.value = content.content.lang
-  const langEntry = byLang[activeTab.value]
+  const target = preferLang ?? defaultEditorLang(langTabs.value, Object.keys(byLang), content.content.lang)
+  activeTab.value = target
+  currentEntryId.value = byLang[target]?.content.id ?? null
+  const langEntry = byLang[target]
   form.value = { ...sharedValues.value, ...(langEntry?.fields ?? {}) }
 }
 
@@ -74,9 +77,18 @@ async function initNew() {
   // 路由 query 带 type
   const typeName = String(route.query.type ?? types.value[0]?.name ?? '')
   currentType.value = types.value.find((t) => t.name === typeName) ?? null
-  currentLang.value = meta.value?.default_lang ?? ''
+  currentLang.value = langTabs.value[0] ?? meta.value?.default_lang ?? ''
   activeTab.value = currentLang.value
-  form.value = {}
+  // 发布日期默认当前时间（YYYY-MM-DD）
+  const hasPublishedOn = (currentType.value?.fields ?? []).some((f) => f.name === 'published_on')
+  form.value = hasPublishedOn ? { published_on: todayStr() } : {}
+}
+
+// 当前日期 YYYY-MM-DD
+function todayStr(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 const needCreate = ref(false)
@@ -84,9 +96,10 @@ const needCreate = ref(false)
 async function switchTab(lang: string) {
   if (id.value) {
     const byLang = await loadTranslations(id.value)
-    const { form: next, needCreate: create } = resolveSwitchTab(byLang, lang, sharedValues.value, form.value)
+    const { form: next, needCreate: create } = resolveSwitchTab(byLang, lang, sharedValues.value)
     form.value = next
     needCreate.value = create
+    currentEntryId.value = byLang[lang]?.content.id ?? null
     if (create) {
       ElMessage.info(`「${lang}」暂无翻译，保存后将创建该语言版本`)
     }
@@ -105,20 +118,24 @@ async function save() {
   try {
     const payload: FormValues = { ...sharedValues.value, ...form.value }
     if (isNew.value) {
-      const { content } = await createContent(currentType.value.name, activeTab.value, payload)
-      router.replace(`/content/${content.content.id}`)
+      const r = await createContent(currentType.value.name, activeTab.value, payload)
+      router.replace(`/content/${r.content.content.id}`)
       ElMessage.success('已创建')
+      notifyAutoTranslate(r.auto_translate)
       // 刷新 id 后走编辑态
-      await loadAfterCreate(content.content.id)
+      await loadAfterCreate(r.content.content.id)
     } else if (id.value) {
-      if (needCreate.value) {
-        await createTranslation(id.value, activeTab.value, payload, currentType.value.name)
+      if (needCreate.value || !currentEntryId.value) {
+        const { content } = await createTranslation(id.value, activeTab.value, payload, currentType.value.name)
+        currentEntryId.value = content.content.id
         needCreate.value = false
+        // createTranslation 是新增语言版本（en→?），不触发 zh→en 自动翻译，无 auto_translate
       } else {
-        await updateContent(id.value, payload)
+        const r = await updateContent(currentEntryId.value, payload)
+        notifyAutoTranslate(r.auto_translate)
       }
       ElMessage.success('已保存')
-      await loadEdit(id.value)
+      await loadEdit(id.value, activeTab.value)
     }
   } catch (e: any) {
     ElMessage.error(e.message ?? '保存失败')
@@ -127,11 +144,18 @@ async function save() {
   }
 }
 
+function notifyAutoTranslate(at?: Pick<AutoTranslateStatus, 'triggered' | 'status'>) {
+  if (!at?.triggered) return
+  if (at.status === 'translated') ElMessage.success('已自动生成英文翻译')
+  else if (at.status === 'fallback') ElMessage.warning('已创建英文草稿，请手动补充翻译')
+}
+
 async function loadAfterCreate(contentId: number) {
   await loadType()
   const byLang = await loadTranslations(contentId)
   currentType.value = types.value.find((t) => t.name === currentType.value?.name) ?? null
-  activeTab.value = currentLang.value
+  // 保留保存时所在的语言 tab（新建时 activeTab 即用户填写语言）
+  currentEntryId.value = byLang[activeTab.value]?.content.id ?? null
   const entry = byLang[activeTab.value]
   form.value = { ...sharedValues.value, ...(entry?.fields ?? {}) }
 }
@@ -139,11 +163,15 @@ async function loadAfterCreate(contentId: number) {
 async function togglePublish() {
   if (!id.value) return
   const entry = translations.value.find((t) => t.content.lang === activeTab.value)
-  const target = entry?.content.status === 'published' ? 'unpublish' : 'publish'
-  if (target === 'publish') await publishContent(id.value)
-  else await unpublishContent(id.value)
+  if (!entry) {
+    ElMessage.warning('当前语言版本尚未保存，请先保存再发布')
+    return
+  }
+  const target = entry.content.status === 'published' ? 'unpublish' : 'publish'
+  if (target === 'publish') await publishContent(entry.content.id)
+  else await unpublishContent(entry.content.id)
   ElMessage.success(target === 'publish' ? '已发布' : '已撤回')
-  await loadEdit(id.value)
+  await loadEdit(id.value, activeTab.value)
 }
 
 onMounted(async () => {

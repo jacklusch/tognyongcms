@@ -16,17 +16,25 @@ export interface ContentEntry {
     payload: string
   }
   type_name: string
+  category_name?: string
   fields: Record<string, unknown>
 }
 
-export const listContent = (params: { type: string; lang: string; status?: string; page?: number; perPage?: number }) =>
-  request<{ items: ContentEntry[]; total: number }>(`/content?type=${params.type}&lang=${params.lang}${params.status ? `&status=${params.status}` : ''}&page=${params.page ?? 1}&per_page=${params.perPage ?? 20}`)
+export const listContent = (params: { type: string; lang: string; status?: string; category?: number; page?: number; perPage?: number }) =>
+  request<{ items: ContentEntry[]; total: number }>(
+    `/content?type=${params.type}&lang=${params.lang}${params.status ? `&status=${params.status}` : ''}${params.category ? `&category=${params.category}` : ''}&page=${params.page ?? 1}&per_page=${params.perPage ?? 20}`
+  )
 
 export const getContent = (id: number) => request<{ content: ContentEntry }>(`/content/${id}`)
+export interface AutoTranslateStatus {
+  triggered?: boolean
+  created?: boolean
+  status?: string
+}
 export const createContent = (type: string, lang: string, data: Record<string, unknown>) =>
-  request<{ content: ContentEntry }>('/content', { method: 'POST', body: { type, lang, data } })
+  request<{ content: ContentEntry; auto_translate?: AutoTranslateStatus }>('/content', { method: 'POST', body: { type, lang, data } })
 export const updateContent = (id: number, data: Record<string, unknown>) =>
-  request<{ content: ContentEntry }>(`/content/${id}`, { method: 'PUT', body: { data } })
+  request<{ content: ContentEntry; auto_translate?: AutoTranslateStatus }>(`/content/${id}`, { method: 'PUT', body: { data } })
 export const deleteContent = (id: number) => request<{ deleted: number }>(`/content/${id}`, { method: 'DELETE' })
 export const publishContent = (id: number) => request<{ id: number; status: string }>(`/content/${id}/publish`, { method: 'POST' })
 export const unpublishContent = (id: number) => request<{ id: number; status: string }>(`/content/${id}/unpublish`, { method: 'POST' })

@@ -4,9 +4,11 @@ export interface CategoryItem {
   id: number
   parent_id: number
   name: string
+  name_en: string
   slug: string
   description: string
   content_count: number
+  total_content_count: number
   children: CategoryItem[]
 }
 
@@ -17,10 +19,11 @@ export interface CategoryCascaderOption {
   label: string
 }
 
-export const listCategories = () => request<{ items: CategoryItem[]; all: CategoryPath[] }>('/categories')
-export const createCategory = (body: { name: string; slug?: string; description?: string; parent_id?: number }) =>
+export const listCategories = (lang?: string) =>
+  request<{ items: CategoryItem[]; all: CategoryPath[] }>(`/categories${lang ? `?lang=${lang}` : ''}`)
+export const createCategory = (body: { name: string; name_en?: string; slug?: string; description?: string; parent_id?: number }) =>
   request<{ category: CategoryItem }>('/categories', { method: 'POST', body })
-export const updateCategory = (id: number, body: { name: string; slug: string; description?: string; parent_id?: number }) =>
+export const updateCategory = (id: number, body: { name: string; name_en?: string; slug: string; description?: string; parent_id?: number }) =>
   request<{ category: CategoryItem }>(`/categories/${id}`, { method: 'PUT', body })
 export const deleteCategory = (id: number) => request<{ deleted: number }>(`/categories/${id}`, { method: 'DELETE' })
 
