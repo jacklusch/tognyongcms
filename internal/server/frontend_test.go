@@ -707,6 +707,49 @@ func TestEntryCategoryNameLocalized(t *testing.T) {
 	}
 }
 
+func TestHomeProductCardsLinkToCategory(t *testing.T) {
+	srv := buildTestServer(t, "../../themes")
+	srv.cfg.Site.Theme = "default"
+	code, body := get(t, srv, "/")
+	if code != http.StatusOK {
+		t.Fatalf("首页 = %d", code)
+	}
+	if !strings.Contains(body, `href="/category/products/chopper"`) {
+		t.Errorf("首页产品卡片应链接到分类归档 /category/products/chopper: %s", body)
+	}
+}
+
+func TestContactShortURL(t *testing.T) {
+	srv := buildTestServer(t, "../../themes")
+	srv.cfg.Site.Theme = "default"
+	code, body := get(t, srv, "/contact")
+	if code != http.StatusOK {
+		t.Fatalf("/contact = %d", code)
+	}
+	if !strings.Contains(body, "info@example.com") {
+		t.Errorf("/contact 应渲染联系我们内容: %s", body)
+	}
+	if !strings.Contains(body, `rel="canonical" href="https://example.com/contact"`) {
+		t.Errorf("canonical 应为短地址 /contact: %s", body)
+	}
+	// /contact/contact 的 canonical 也应指向短地址
+	code2, body2 := get(t, srv, "/contact/contact")
+	if code2 != http.StatusOK {
+		t.Fatalf("/contact/contact = %d", code2)
+	}
+	if !strings.Contains(body2, `rel="canonical" href="https://example.com/contact"`) {
+		t.Errorf("/contact/contact canonical 应为 /contact: %s", body2)
+	}
+	// sitemap 收录短地址，不含 /contact/contact
+	_, sm := get(t, srv, "/sitemap.xml")
+	if !strings.Contains(sm, "https://example.com/contact</loc>") {
+		t.Errorf("sitemap 应含短地址 /contact: %s", sm)
+	}
+	if strings.Contains(sm, "https://example.com/contact/contact") {
+		t.Errorf("sitemap 不应含 /contact/contact: %s", sm)
+	}
+}
+
 // rebuildServer：把 auth/media 注入 server 并重建引擎
 func rebuildServer(t *testing.T, cfg *config.Config, st store.Store, svc *content.Service, reg *i18n.Registry, authSvc *auth.Service) *Server {
 	t.Helper()

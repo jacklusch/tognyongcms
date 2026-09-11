@@ -4,6 +4,8 @@ package theme
 import (
 	"fmt"
 	"html/template"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"dulizhan/internal/content"
@@ -18,11 +20,32 @@ func (t *Theme) buildFuncs() template.FuncMap {
 		"pagerURL":  func(d *Data, page int) string { return t.pagerURL(d, page) },
 		"menu":      menuData,
 		"firstMenu": firstMenu,
-		"asset":     func(p string) string { return "/themes/" + t.Name + p },
-		"media":     mediaFunc,
-		"raw":       func(v any) template.HTML { return template.HTML(fmt.Sprint(v)) },
-		"pages":     pagesFunc,
+		"asset":     func(p string) string { return t.assetURL(p) },
+		"entryCategoryURL": func(lang string, e content.Entry) string {
+			if t.entryCatURL != nil {
+				if u := t.entryCatURL(lang, e); u != "" {
+					return u
+				}
+			}
+			return t.urlPath(lang, "/"+e.TypeName+"/"+e.Content.Slug)
+		},
+		"media": mediaFunc,
+		"raw":   func(v any) template.HTML { return template.HTML(fmt.Sprint(v)) },
+		"pages": pagesFunc,
+		// socialIcon 由链接识别社交平台标识（tiktok/youtube/facebook/x/instagram），供页脚图标选择。
+		"socialIcon": socialPlatform,
 	}
+}
+
+// assetURL 生成主题静态资源 URL，并附加文件 mtime 作为版本号，
+// 资源变更后 URL 随之变化，浏览器立即重新拉取，避免旧缓存。
+func (t *Theme) assetURL(p string) string {
+	url := "/themes/" + t.Name + p
+	full := filepath.Join(t.Dir, "static", filepath.FromSlash(p))
+	if fi, err := os.Stat(full); err == nil {
+		url += fmt.Sprintf("?v=%d", fi.ModTime().Unix())
+	}
+	return url
 }
 
 // menuData 按菜单名返回渲染就绪导航项（d 是模板根 Data）。

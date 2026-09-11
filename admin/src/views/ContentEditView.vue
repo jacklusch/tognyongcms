@@ -8,7 +8,7 @@ import { fetchMeta, type MetaData } from '../api/meta'
 import DynamicForm from '../dynamic-form/DynamicForm.vue'
 import { validateForm } from '../dynamic-form/registry'
 import type { FormValues } from '../dynamic-form/types'
-import { resolveSwitchTab } from './content-edit-tabs'
+import { resolveSwitchTab, orderLangTabs, defaultEditorLang } from './content-edit-tabs'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
@@ -28,7 +28,7 @@ const form = ref<FormValues>({})
 const loading = ref(false)
 const saving = ref(false)
 
-const langTabs = computed(() => meta.value?.languages ?? [])
+const langTabs = computed(() => orderLangTabs(meta.value?.languages ?? []))
 const fields = computed(() => currentType.value?.fields ?? [])
 
 // 非 translatable 字段跨语言共享：从首个已有翻译取共享值
@@ -66,7 +66,7 @@ async function loadEdit(contentId: number, preferLang?: string) {
   const byLang = await loadTranslations(contentId)
   currentType.value = types.value.find((t) => t.name === content.type_name) ?? null
   currentLang.value = content.content.lang
-  const target = preferLang ?? content.content.lang
+  const target = preferLang ?? defaultEditorLang(langTabs.value, Object.keys(byLang), content.content.lang)
   activeTab.value = target
   currentEntryId.value = byLang[target]?.content.id ?? null
   const langEntry = byLang[target]
@@ -77,7 +77,7 @@ async function initNew() {
   // 路由 query 带 type
   const typeName = String(route.query.type ?? types.value[0]?.name ?? '')
   currentType.value = types.value.find((t) => t.name === typeName) ?? null
-  currentLang.value = meta.value?.default_lang ?? ''
+  currentLang.value = langTabs.value[0] ?? meta.value?.default_lang ?? ''
   activeTab.value = currentLang.value
   // 发布日期默认当前时间（YYYY-MM-DD）
   const hasPublishedOn = (currentType.value?.fields ?? []).some((f) => f.name === 'published_on')

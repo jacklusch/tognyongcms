@@ -19,7 +19,7 @@
     <div class="grid">
       {{$prod := .Products}}{{if not $prod}}{{$prod = .Items}}{{end}}
       {{$n := 6}}{{if lt (len $prod) $n}}{{$n = len $prod}}{{end}}{{range slice $prod 0 $n}}
-      <a class="card" href="{{url $.Lang .}}">
+      <a class="card" href="{{entryCategoryURL $.Lang .}}">
         {{if .Fields.cover}}<img src="{{media .Fields.cover}}" alt="{{.Content.Title}}">{{else}}<div class="card-img-placeholder"></div>{{end}}
         <div class="card-body">
           <h3>{{.Content.Title}}</h3>

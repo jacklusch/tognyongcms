@@ -63,6 +63,7 @@ func New(cfg *config.Config, st store.Store, svc *content.Service, reg *i18n.Reg
 		media:  medStore,
 		log:    logger,
 	}
+	loader.SetEntryCategoryURL(s.entryCategoryURL)
 	eng := gin.New()
 	eng.Use(s.accessLog(), s.recovery())
 	s.engine = eng
@@ -215,5 +216,6 @@ func (s *Server) handleThemeStatic(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
+	c.Header("Cache-Control", "no-cache")
 	c.File(full)
 }

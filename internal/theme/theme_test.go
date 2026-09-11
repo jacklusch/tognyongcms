@@ -38,7 +38,7 @@ locales:
 {{define "body"}}
 <header>{{template "nav" .}}</header>
 <main><h1>{{.Site.Name}}</h1>
-<ul>{{range .Items}}<li><a href="{{url $.Lang .}}">{{.Content.Title}}</a></li>{{end}}</ul>
+<ul>{{range .Items}}<li><a href="{{entryCategoryURL $.Lang .}}">{{.Content.Title}}</a></li>{{end}}</ul>
 </main>
 {{end}}`,
 		"templates/single.html": `{{define "head"}}{{end}}
@@ -234,5 +234,31 @@ func TestLoaderNonDebugCache(t *testing.T) {
 	th2, _ := loader.Get("fixture")
 	if th1 != th2 {
 		t.Error("非 debug 模式应返回缓存同一实例")
+	}
+}
+
+func TestEntryCategoryURLUsesResolver(t *testing.T) {
+	reg, err := i18n.New([]string{"zh", "en"}, "zh", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loader := NewLoader(writeFixtureTheme(t), reg)
+	loader.SetEntryCategoryURL(func(lang string, e content.Entry) string {
+		return "/category/products/" + e.Content.Slug
+	})
+	th, err := loader.Load("fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := &bytes.Buffer{}
+	entry := content.Entry{TypeName: "article", Content: store.Content{Slug: "chopper-1", Title: "斩拌机"}}
+	if err := th.Render(buf, "index", &Data{
+		Site: SiteInfo{Name: "x"}, Lang: "zh", Langs: reg.All(),
+		Items: []content.Entry{entry}, Meta: seo.Meta{Title: "x"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `href="/category/products/chopper-1"`) {
+		t.Errorf("应使用注入的分类 URL: %s", buf.String())
 	}
 }

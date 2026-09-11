@@ -124,10 +124,24 @@ func (s *Server) renderList(c *gin.Context, th *theme.Theme, lang, typeName stri
 		c.String(http.StatusInternalServerError, "查询失败: %v", err)
 		return
 	}
+	tplKey := th.TemplateFor(typeName)
+	// 单页面类型（映射到自定义模板且仅一个条目，如「联系我们」）：/<type> 直接渲染该详情页，
+	// canonical 用短地址 /<type>，避免与 /<type>/<slug> 重复。
+	if isSinglePageType(th, typeName) && page == 1 && total == 1 && len(items) == 1 {
+		e := items[0]
+		data.Entry = &e
+		data.TypeName = typeName
+		data.Meta = s.seo.BuildEntry(lang, e, nil, false)
+		data.Meta.Canonical = s.cfg.Site.URL + s.i18n.URLPath(lang, "/"+typeName)
+		if err := th.Render(c.Writer, tplKey, data); err != nil {
+			c.String(http.StatusInternalServerError, "渲染失败: %v", err)
+		}
+		return
+	}
 	data.Items, data.Total, data.Page = items, total, page
 	data.TypeName = typeName
 	data.Meta = s.seo.BuildList(lang, typeName, page)
-	key := th.TemplateFor(typeName)
+	key := tplKey
 	if key == "single" {
 		key = "list"
 	}
@@ -232,27 +246,62 @@ func (s *Server) renderSingle(c *gin.Context, th *theme.Theme, lang, typeName, s
 	data.Entry = &e
 	var crumbs []seo.Breadcrumb
 	isProduct := false
-	if catIDStr, ok := e.Fields["category"].(string); ok && catIDStr != "" {
-		if id, err := strconv.ParseInt(catIDStr, 10, 64); err == nil {
-			if cat, err := s.store.CategoryRepo().GetByID(c.Request.Context(), id); err == nil {
-				data.EntryCategory = s.catName(cat, lang)
-				chain := s.categoryChainInfo(c.Request.Context(), cat.ID)
-				if chain != nil {
-					slugs := make([]string, len(chain))
-					for i, c := range chain {
-						slugs[i] = c.Slug
-					}
-					data.EntryCategoryURL = s.categoryURL(lang, slugs)
-					crumbs = s.entryBreadcrumbs(lang, chain, slugs, e.TypeName, e.Content.Slug, e.Content.Title)
-					isProduct = len(slugs) > 0 && slugs[0] == s.cfg.Site.HomeProductsCategory // 顶级分类为产品分类即视为产品页
-				}
-			}
+	if chain := s.entryCategoryChain(c.Request.Context(), e); chain != nil {
+		cat := chain[len(chain)-1]
+		data.EntryCategory = s.catName(cat, lang)
+		slugs := make([]string, len(chain))
+		for i, c := range chain {
+			slugs[i] = c.Slug
 		}
+		data.EntryCategoryURL = s.categoryURL(lang, slugs)
+		crumbs = s.entryBreadcrumbs(lang, chain, slugs, e.TypeName, e.Content.Slug, e.Content.Title)
+		isProduct = len(slugs) > 0 && slugs[0] == s.cfg.Site.HomeProductsCategory // 顶级分类为产品分类即视为产品页
 	}
 	data.Meta = s.seo.BuildEntry(lang, e, crumbs, isProduct)
+	if isSinglePageType(th, typeName) {
+		// 单页面类型：规范地址用短地址 /<type>，与 /<type> 渲染保持一致
+		data.Meta.Canonical = s.cfg.Site.URL + s.i18n.URLPath(lang, "/"+typeName)
+	}
 	if err := th.Render(c.Writer, th.TemplateFor(typeName), data); err != nil {
 		c.String(http.StatusInternalServerError, "渲染失败: %v", err)
 	}
+}
+
+// isSinglePageType 判断内容类型是否为「单页面」类型：主题把它映射到自定义模板（非 single/list）。
+func isSinglePageType(th *theme.Theme, typeName string) bool {
+	tpl := th.TemplateFor(typeName)
+	return tpl != "single" && tpl != "list"
+}
+
+// entryCategoryChain 解析 entry 的 category 字段为分类链（自顶向下）；无分类/解析失败返回 nil。
+func (s *Server) entryCategoryChain(ctx context.Context, e content.Entry) []store.Category {
+	catIDStr, ok := e.Fields["category"].(string)
+	if !ok || catIDStr == "" {
+		return nil
+	}
+	id, err := strconv.ParseInt(catIDStr, 10, 64)
+	if err != nil {
+		return nil
+	}
+	cat, err := s.store.CategoryRepo().GetByID(ctx, id)
+	if err != nil {
+		return nil
+	}
+	return s.categoryChainInfo(ctx, cat.ID)
+}
+
+// entryCategoryURL 解析 entry 所属分类的归档 URL；无分类/解析失败返回空串。
+// 模板函数无请求上下文，此处用 context.Background()（本地 DB 读，无取消需求）。
+func (s *Server) entryCategoryURL(lang string, e content.Entry) string {
+	chain := s.entryCategoryChain(context.Background(), e)
+	if chain == nil {
+		return ""
+	}
+	slugs := make([]string, len(chain))
+	for i, c := range chain {
+		slugs[i] = c.Slug
+	}
+	return s.categoryURL(lang, slugs)
 }
 
 // categoryChain 返回分类自顶级到自身的 slug 链（自顶向下），任一级查询失败返回 nil。
@@ -379,12 +428,21 @@ func (s *Server) handleSitemap(c *gin.Context) {
 			entries = append(entries, seo.SitemapEntry{Loc: s.cfg.Site.URL + s.categoryURL(l.Code, chain)})
 		}
 	}
+	th, thErr := s.themes.Get(s.cfg.Site.Theme)
 	for _, ct := range types {
+		single := thErr == nil && isSinglePageType(th, ct.Name)
 		for _, l := range s.i18n.All() {
 			items, _, err := s.content.ListPublished(ctx, ct.Name, l.Code, 1, 1000)
 			if err != nil && !errors.Is(err, errs.ErrNotFound) {
 				c.String(http.StatusInternalServerError, "查询失败: %v", err)
 				return
+			}
+			if single {
+				// 单页面类型：收录短地址 /<type>（有内容才收录）
+				if len(items) > 0 {
+					entries = append(entries, seo.SitemapEntry{Loc: s.cfg.Site.URL + s.i18n.URLPath(l.Code, "/"+ct.Name)})
+				}
+				continue
 			}
 			for _, it := range items {
 				path := "/" + ct.Name + "/" + it.Content.Slug
