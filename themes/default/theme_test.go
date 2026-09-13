@@ -27,7 +27,7 @@ func TestDefaultThemeLoadsAndRenders(t *testing.T) {
 	entry := content.Entry{
 		TypeName: "article",
 		Content:  store.Content{Slug: "hello", Title: "你好世界"},
-		Fields:   map[string]any{"content": "<p>正文</p>", "excerpt": "摘要"},
+		Fields:   map[string]any{"content": "<p>正文</p>", "excerpt": "摘要", "cover": "/media/cover.jpg"},
 	}
 	err = th.Render(buf, th.TemplateFor("article"), &theme.Data{
 		Site: theme.SiteInfo{Name: "Dulizhan CMS", URL: "https://example.com", Description: "描述"},
@@ -41,6 +41,9 @@ func TestDefaultThemeLoadsAndRenders(t *testing.T) {
 	out := buf.String()
 	if !contains(out, "你好世界") || !contains(out, "<p>正文</p>") {
 		t.Errorf("渲染内容缺失: %s", out)
+	}
+	if contains(out, "entry-hero") || contains(out, "/media/cover.jpg") {
+		t.Errorf("详情页不应渲染封面图: %s", out)
 	}
 }
 
