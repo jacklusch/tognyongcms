@@ -27,9 +27,17 @@ const translations = ref<ContentEntry[]>([])
 const form = ref<FormValues>({})
 const loading = ref(false)
 const saving = ref(false)
+const autoTranslate = ref(false)
 
 const langTabs = computed(() => orderLangTabs(meta.value?.languages ?? []))
 const fields = computed(() => currentType.value?.fields ?? [])
+
+// 是否显示「同时生成翻译」勾选框：站点启用翻译且当前编辑语言为翻译源语言
+const showAutoTranslate = computed(() => !!meta.value?.translate_enabled && activeTab.value === meta.value?.translate_source_lang)
+const targetLangLabel = computed(() => {
+  const t = meta.value?.translate_target_lang
+  return t === 'en' ? '英文' : t === 'zh' ? '中文' : (t ?? '')
+})
 
 // 非 translatable 字段跨语言共享：从首个已有翻译取共享值
 const sharedValues = computed(() => {
@@ -118,10 +126,11 @@ async function save() {
   try {
     const payload: FormValues = { ...sharedValues.value, ...form.value }
     if (isNew.value) {
-      const r = await createContent(currentType.value.name, activeTab.value, payload)
+      const r = await createContent(currentType.value.name, activeTab.value, payload, autoTranslate.value)
       router.replace(`/content/${r.content.content.id}`)
       ElMessage.success('已创建')
       notifyAutoTranslate(r.auto_translate)
+      autoTranslate.value = false
       // 刷新 id 后走编辑态
       await loadAfterCreate(r.content.content.id)
     } else if (id.value) {
@@ -131,8 +140,9 @@ async function save() {
         needCreate.value = false
         // createTranslation 是新增语言版本（en→?），不触发 zh→en 自动翻译，无 auto_translate
       } else {
-        const r = await updateContent(currentEntryId.value, payload)
+        const r = await updateContent(currentEntryId.value, payload, autoTranslate.value)
         notifyAutoTranslate(r.auto_translate)
+        autoTranslate.value = false
       }
       ElMessage.success('已保存')
       await loadEdit(id.value, activeTab.value)
@@ -189,6 +199,7 @@ onMounted(async () => {
       <el-tab-pane v-for="l in langTabs" :key="l" :label="l" :name="l" />
     </el-tabs>
     <DynamicForm v-model="form" :fields="fields" />
+    <el-checkbox v-if="showAutoTranslate" v-model="autoTranslate" class="auto-translate">同时生成{{ targetLangLabel }}翻译</el-checkbox>
     <div class="actions">
       <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       <el-button v-if="!isNew && (auth.role === 'admin' || auth.role === 'editor') && auth.hasPerm(`content.publish.${currentType?.name}`)" @click="togglePublish">发布/撤回</el-button>
@@ -200,4 +211,5 @@ onMounted(async () => {
 
 <style scoped>
 .actions { margin-top: 24px; display: flex; gap: 12px; }
+.auto-translate { margin-top: 16px; display: block; }
 </style>

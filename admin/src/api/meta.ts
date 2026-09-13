@@ -7,6 +7,9 @@ export interface MetaData {
   languages: string[]
   default_lang: string
   theme: string
+  translate_enabled: boolean
+  translate_source_lang: string
+  translate_target_lang: string
 }
 
 export const fetchMeta = () => request<MetaData>('/meta')

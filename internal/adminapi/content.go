@@ -14,9 +14,10 @@ import (
 )
 
 type contentReq struct {
-	Type string         `json:"type"`
-	Lang string         `json:"lang"`
-	Data map[string]any `json:"data"`
+	Type          string         `json:"type"`
+	Lang          string         `json:"lang"`
+	Data          map[string]any `json:"data"`
+	AutoTranslate bool           `json:"auto_translate"` // 勾选后才生成目标语言翻译，默认 false
 }
 
 // actor 从上下文取当前用户，缺会话返回零值（防御性，final-fix Finding 1）。
@@ -144,9 +145,13 @@ func (d *Deps) HandleContentCreate(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	at, terr := d.Content.EnsureTranslation(c.Request.Context(), req.Type, req.Lang, e.Content.ContentID, e.Fields, d.actor(c))
-	if terr != nil {
-		slog.Warn("自动翻译失败", "type", req.Type, "lang", req.Lang, "error", terr)
+	var at content.TranslateStatus
+	if req.AutoTranslate {
+		var terr error
+		at, terr = d.Content.EnsureTranslation(c.Request.Context(), req.Type, req.Lang, e.Content.ContentID, e.Fields, d.actor(c))
+		if terr != nil {
+			slog.Warn("自动翻译失败", "type", req.Type, "lang", req.Lang, "error", terr)
+		}
 	}
 	respondOK(c, gin.H{"content": e, "auto_translate": at})
 }
@@ -186,9 +191,13 @@ func (d *Deps) HandleContentUpdate(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	at, terr := d.Content.EnsureTranslation(c.Request.Context(), e.TypeName, e.Content.Lang, e.Content.ContentID, e.Fields, d.actor(c))
-	if terr != nil {
-		slog.Warn("自动翻译失败", "type", e.TypeName, "lang", e.Content.Lang, "error", terr)
+	var at content.TranslateStatus
+	if req.AutoTranslate {
+		var terr error
+		at, terr = d.Content.EnsureTranslation(c.Request.Context(), e.TypeName, e.Content.Lang, e.Content.ContentID, e.Fields, d.actor(c))
+		if terr != nil {
+			slog.Warn("自动翻译失败", "type", e.TypeName, "lang", e.Content.Lang, "error", terr)
+		}
 	}
 	respondOK(c, gin.H{"content": e, "auto_translate": at})
 }

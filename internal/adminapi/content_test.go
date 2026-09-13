@@ -43,7 +43,7 @@ func TestContentCreateAutoTranslate(t *testing.T) {
 	e.svc.SetTranslator(tr, cfg)
 	tok := e.login(t)
 
-	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"自动翻译测试","slug":"auto-1","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"}}`, tok)
+	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"自动翻译测试","slug":"auto-1","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"},"auto_translate":true}`, tok)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create = %d %s", w.Code, w.Body.String())
 	}
@@ -64,6 +64,41 @@ func TestContentCreateAutoTranslate(t *testing.T) {
 	}
 	if !resp.Data.AutoTranslate.Triggered || !resp.Data.AutoTranslate.Created || resp.Data.AutoTranslate.Status != "translated" {
 		t.Errorf("auto_translate = %+v", resp.Data.AutoTranslate)
+	}
+}
+
+// 默认（不传 auto_translate）不生成目标语言翻译。
+func TestContentCreateNoAutoTranslateByDefault(t *testing.T) {
+	e := newEnv(t)
+	e.cfg.Translate = config.TranslateConfig{Enabled: true, SourceLang: "zh", TargetLang: "en"}
+	e.svc.SetTranslator(&fakeTranslator{}, &e.cfg.Translate)
+	tok := e.login(t)
+
+	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"不翻译","slug":"no-auto","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"}}`, tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create = %d %s", w.Code, w.Body.String())
+	}
+	zhID := createdContentID(t, w)
+	w = e.do(t, http.MethodGet, fmt.Sprintf("/api/content/%d/translations", zhID), "", tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("translations = %d %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Items []struct {
+				Content struct {
+					Lang string `json:"lang"`
+				} `json:"content"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range resp.Data.Items {
+		if it.Content.Lang == "en" {
+			t.Errorf("默认（未勾选 auto_translate）不应生成 en 翻译")
+		}
 	}
 }
 
@@ -198,7 +233,7 @@ func TestPublishSyncsTranslationStatus(t *testing.T) {
 	e.svc.SetTranslator(&fakeTranslator{}, &e.cfg.Translate)
 	tok := e.login(t)
 
-	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"同步发布","slug":"sync-pub","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"}}`, tok)
+	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"同步发布","slug":"sync-pub","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"},"auto_translate":true}`, tok)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create = %d %s", w.Code, w.Body.String())
 	}
@@ -224,7 +259,7 @@ func TestUnpublishSyncsTranslationStatus(t *testing.T) {
 	e.svc.SetTranslator(&fakeTranslator{}, &e.cfg.Translate)
 	tok := e.login(t)
 
-	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"同步撤回","slug":"sync-unpub","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"}}`, tok)
+	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"同步撤回","slug":"sync-unpub","content":"<p>正文</p>","published_on":"2026-01-15","category":"1"},"auto_translate":true}`, tok)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create = %d %s", w.Code, w.Body.String())
 	}
@@ -271,7 +306,7 @@ func TestPublishSkipsFallbackTranslationStatus(t *testing.T) {
 	e.svc.SetTranslator(&failingTranslator{}, &e.cfg.Translate)
 	tok := e.login(t)
 
-	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"降级草稿","slug":"fallback-draft","content":"<p>原文</p>","published_on":"2026-01-15","category":"1"}}`, tok)
+	w := e.do(t, http.MethodPost, "/api/content", `{"type":"article","lang":"zh","data":{"title":"降级草稿","slug":"fallback-draft","content":"<p>原文</p>","published_on":"2026-01-15","category":"1"},"auto_translate":true}`, tok)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create = %d %s", w.Code, w.Body.String())
 	}

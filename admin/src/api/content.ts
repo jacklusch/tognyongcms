@@ -31,10 +31,10 @@ export interface AutoTranslateStatus {
   created?: boolean
   status?: string
 }
-export const createContent = (type: string, lang: string, data: Record<string, unknown>) =>
-  request<{ content: ContentEntry; auto_translate?: AutoTranslateStatus }>('/content', { method: 'POST', body: { type, lang, data } })
-export const updateContent = (id: number, data: Record<string, unknown>) =>
-  request<{ content: ContentEntry; auto_translate?: AutoTranslateStatus }>(`/content/${id}`, { method: 'PUT', body: { data } })
+export const createContent = (type: string, lang: string, data: Record<string, unknown>, autoTranslate = false) =>
+  request<{ content: ContentEntry; auto_translate?: AutoTranslateStatus }>('/content', { method: 'POST', body: { type, lang, data, auto_translate: autoTranslate } })
+export const updateContent = (id: number, data: Record<string, unknown>, autoTranslate = false) =>
+  request<{ content: ContentEntry; auto_translate?: AutoTranslateStatus }>(`/content/${id}`, { method: 'PUT', body: { data, auto_translate: autoTranslate } })
 export const deleteContent = (id: number) => request<{ deleted: number }>(`/content/${id}`, { method: 'DELETE' })
 export const publishContent = (id: number) => request<{ id: number; status: string }>(`/content/${id}/publish`, { method: 'POST' })
 export const unpublishContent = (id: number) => request<{ id: number; status: string }>(`/content/${id}/unpublish`, { method: 'POST' })
