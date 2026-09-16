@@ -295,6 +295,66 @@ func TestMediaUploadDelete(t *testing.T) {
 	}
 }
 
+func TestMediaPaginationAndBatchDelete(t *testing.T) {
+	e := newEnv(t)
+	tok := e.login(t)
+	upload := func(name string) {
+		var buf bytes.Buffer
+		bw := multipart.NewWriter(&buf)
+		fw, _ := bw.CreateFormFile("file", name)
+		fw.Write([]byte("hello"))
+		bw.Close()
+		req := httptest.NewRequest(http.MethodPost, "/api/media/upload", &buf)
+		req.Header.Set("Content-Type", bw.FormDataContentType())
+		req.Header.Set("Authorization", "Bearer "+tok)
+		w := httptest.NewRecorder()
+		e.g.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("upload %s = %d %s", name, w.Code, w.Body.String())
+		}
+	}
+	upload("a.png")
+	upload("b.png")
+	upload("c.png")
+
+	type mediaListResp struct {
+		Data struct {
+			Items []struct {
+				ID int64 `json:"id"`
+			} `json:"items"`
+			Total int `json:"total"`
+		} `json:"data"`
+	}
+	// 分页：per_page=2 → total=3，items=2
+	w := e.do(t, http.MethodGet, "/api/media?page=1&per_page=2", "", tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list = %d %s", w.Code, w.Body.String())
+	}
+	var list mediaListResp
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Data.Total != 3 || len(list.Data.Items) != 2 {
+		t.Fatalf("分页 total=%d items=%d, want 3/2", list.Data.Total, len(list.Data.Items))
+	}
+
+	// 批量删除前两个
+	body, _ := json.Marshal(map[string]any{"ids": []int64{list.Data.Items[0].ID, list.Data.Items[1].ID}})
+	w = e.do(t, http.MethodPost, "/api/media/batch-delete", string(body), tok)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"deleted":2`) {
+		t.Fatalf("batch delete = %d %s", w.Code, w.Body.String())
+	}
+
+	// 删除后 total=1
+	w = e.do(t, http.MethodGet, "/api/media", "", tok)
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Data.Total != 1 {
+		t.Errorf("批量删除后 total=%d, want 1", list.Data.Total)
+	}
+}
+
 func TestMenuPartialUpdate(t *testing.T) {
 	e := newEnv(t)
 	tok := e.login(t)

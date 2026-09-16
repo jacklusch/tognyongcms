@@ -1,6 +1,8 @@
 package adminapi
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 
 	"dulizhan/internal/media"
@@ -42,12 +44,55 @@ func (d *Deps) HandleMediaUpload(c *gin.Context) {
 }
 
 func (d *Deps) HandleMediaList(c *gin.Context) {
-	items, err := d.Store.MediaRepo().List(c.Request.Context(), 0, 100)
+	page, _ := strconv.Atoi(c.Query("page"))
+	if page < 1 {
+		page = 1
+	}
+	perPage, _ := strconv.Atoi(c.Query("per_page"))
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	ctx := c.Request.Context()
+	total, err := d.Store.MediaRepo().Count(ctx)
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	respondOK(c, gin.H{"items": items})
+	items, err := d.Store.MediaRepo().List(ctx, (page-1)*perPage, perPage)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	respondOK(c, gin.H{"items": items, "total": total})
+}
+
+type mediaBatchDeleteReq struct {
+	IDs []int64 `json:"ids"`
+}
+
+// HandleMediaBatchDelete 批量删除媒体（逐个删文件 + 记录）；已不存在的 id 跳过。
+func (d *Deps) HandleMediaBatchDelete(c *gin.Context) {
+	var req mediaBatchDeleteReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "请求体格式错误")
+		return
+	}
+	ctx := c.Request.Context()
+	deleted := 0
+	for _, id := range req.IDs {
+		m, err := d.Store.MediaRepo().GetByID(ctx, id)
+		if err != nil {
+			continue
+		}
+		if err := d.Media.Delete(ctx, d.Media.Key(m.URL)); err != nil {
+			continue
+		}
+		if err := d.Store.MediaRepo().Delete(ctx, id); err != nil {
+			continue
+		}
+		deleted++
+	}
+	respondOK(c, gin.H{"deleted": deleted})
 }
 
 func (d *Deps) HandleMediaDelete(c *gin.Context) {

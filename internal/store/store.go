@@ -87,6 +87,7 @@ type MediaRepo interface {
 	Create(ctx context.Context, m *Media) error
 	GetByID(ctx context.Context, id int64) (Media, error)
 	List(ctx context.Context, offset, limit int) ([]Media, error)
+	Count(ctx context.Context) (int, error)
 	Delete(ctx context.Context, id int64) error
 }
 

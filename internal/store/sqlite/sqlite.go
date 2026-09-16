@@ -738,6 +738,13 @@ func (r *mediaRepo) List(ctx context.Context, offset, limit int) ([]store.Media,
 	}
 	return out, rows.Err()
 }
+func (r *mediaRepo) Count(ctx context.Context) (int, error) {
+	var n int
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media").Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
 func (r *mediaRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM media WHERE id = ?", id)
 	return err
