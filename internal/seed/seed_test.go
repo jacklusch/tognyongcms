@@ -237,6 +237,37 @@ func TestSeedDemoData(t *testing.T) {
 	}
 }
 
+func TestSeedCategoryNameEnBackfill(t *testing.T) {
+	t.Setenv("DULIZHAN_SEED_NO_DOWNLOAD", "1")
+	ctx := context.Background()
+	st, _ := sqlite.Open(":memory:")
+	reg := schema.NewRegistry()
+	svc := content.New(st, reg, []string{"zh", "en"})
+	// 先跑一次 seed 建出分类，再把 news 的 name_en 清空模拟旧库
+	if err := Run(ctx, st, svc, &mockMediaStore{}); err != nil {
+		t.Fatal(err)
+	}
+	news, err := st.CategoryRepo().GetBySlug(ctx, "news")
+	if err != nil {
+		t.Fatal(err)
+	}
+	news.NameEn = ""
+	if err := st.CategoryRepo().Update(ctx, &news); err != nil {
+		t.Fatal(err)
+	}
+	// 再跑 seed，应回填 name_en=News（幂等）
+	if err := Run(ctx, st, svc, &mockMediaStore{}); err != nil {
+		t.Fatal(err)
+	}
+	cat, err := st.CategoryRepo().GetBySlug(ctx, "news")
+	if err != nil {
+		t.Fatalf("GetBySlug news: %v", err)
+	}
+	if cat.NameEn != "News" {
+		t.Errorf("news name_en = %q, want News", cat.NameEn)
+	}
+}
+
 // menuHasChild 判断菜单项 children 中是否含指定 URL。
 func menuHasChild(items []store.MenuItem, url string) bool {
 	for _, it := range items {

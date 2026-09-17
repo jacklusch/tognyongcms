@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900">
+  <rect width="1600" height="900" fill="#222222"/>
+  <path d="M0 900 L1600 900 L1600 860 L0 860 Z" fill="#2a2a2a"/>
+  <g stroke="#3a3a3a" stroke-width="1">
+    <path d="M0 450 H1600 M0 300 H1600 M0 600 H1600 M400 0 V900 M800 0 V900 M1200 0 V900"/>
+  </g>
+  <circle cx="200" cy="180" r="120" fill="none" stroke="#555555" stroke-width="40"/>
+  <circle cx="520" cy="200" r="160" fill="none" stroke="#555555" stroke-width="50"/>
+  <circle cx="200" cy="180" r="12" fill="#555555"/>
+  <circle cx="520" cy="200" r="16" fill="#555555"/>
+  <rect x="820" y="80" width="300" height="180" fill="none" stroke="#555555" stroke-width="40"/>
+  <circle cx="970" cy="170" r="30" fill="none" stroke="#4a4a4a" stroke-width="14"/>
+  <circle cx="1400" cy="400" r="220" fill="none" stroke="#4a4a4a" stroke-width="70"/>
+  <path d="M1220 400 h80 M1380 400 h80" stroke="#555555" stroke-width="26"/>
+  <rect x="100" y="560" width="420" height="120" fill="none" stroke="#555555" stroke-width="34"/>
+  <rect x="160" y="620" width="160" height="40" fill="none" stroke="#4a4a4a" stroke-width="12"/>
+  <circle cx="900" cy="640" r="130" fill="none" stroke="#4a4a4a" stroke-width="46"/>
+  <circle cx="900" cy="640" r="130" fill="none" stroke="#555555" stroke-width="46" stroke-dasharray="120 40"/>
+  <rect x="1150" y="600" width="260" height="160" fill="none" stroke="#555555" stroke-width="36"/>
+  <path d="M1200 600 V760 M1340 600 V760 M1410 600 V760" stroke="#4a4a4a" stroke-width="20"/>
+</svg>

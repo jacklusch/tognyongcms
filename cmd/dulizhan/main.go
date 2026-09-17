@@ -20,6 +20,7 @@ import (
 	"dulizhan/internal/server"
 	"dulizhan/internal/store/sqlite"
 	"dulizhan/internal/theme"
+	"dulizhan/internal/translate"
 )
 
 func main() {
@@ -34,8 +35,8 @@ func main() {
 			cfg = &config.Config{}
 			cfg.Database.Driver = "sqlite"
 			cfg.Database.DSN = "dulizhan.db"
-			cfg.Site.Languages = []string{"zh", "en"}
-			cfg.Site.DefaultLang = "zh"
+			cfg.Site.Languages = []string{"en", "zh"}
+			cfg.Site.DefaultLang = "en"
 		}
 		st, err := sqlite.Open(cfg.Database.DSN)
 		if err != nil {
@@ -79,6 +80,10 @@ func main() {
 	}
 	authSvc := auth.New(st, 7*24*time.Hour)
 	svc := content.New(st, schema.NewRegistry(), cfg.Site.Languages)
+	if cfg.Translate.Enabled {
+		tr := translate.New(cfg.Translate.APIKey, cfg.Translate.BaseURL, cfg.Translate.Model)
+		svc.SetTranslator(tr, &cfg.Translate)
+	}
 	var med media.MediaStore
 	if cfg.Media.Driver == "s3" && cfg.Media.S3 != nil {
 		med, err = media.NewS3Store(*cfg.Media.S3)

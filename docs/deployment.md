@@ -17,6 +17,17 @@
 ## 配置覆盖（环境变量）
 `DULIZHAN_SERVER_ADDR`、`DULIZHAN_SITE_URL`、`DULIZHAN_DATABASE_DSN`、`DULIZHAN_MEDIA_DRIVER` 等（前缀 `DULIZHAN_`）。
 
+## 站点配置（site 段）
+- `names`：按语言的品牌名（title 后缀、og:site_name、JSON-LD name），缺失回退 `name`。
+- `descriptions`：按语言的 meta description，缺失回退 `description`。
+- `home_titles`：按语言的首页 title（含 SEO 关键词），缺失回退 `name`。
+- `og_image`：社交分享默认图路径（相对路径，输出时拼 `site.url` 为绝对地址；文章/产品页自动取 `cover` 字段，无 cover 时用此默认图）。
+- `default_lang`：默认语言（根路径 `/` 显示的语言），如 `en`。
+- `languages`：语言列表（顺序即前台语言切换器顺序），如 `["en", "zh"]`。
+- `prefix_default_lang`：`true` 时所有语言 URL 带前缀（`/en/...`、`/zh/...`），默认语言根路径仍可访问；`false` 时默认语言无前缀。
+
+> 提示：切换 `default_lang` 后，非默认语言的 URL 前缀会相应变化（默认语言无前缀，其余语言带前缀）。搜索引擎索引请以新 canonical/sitemap 为准。
+
 ## 数据与媒体
 - `data_dir`（默认 ./data）存媒体文件
 - SQLite 数据库文件（默认 dulizhan.db）

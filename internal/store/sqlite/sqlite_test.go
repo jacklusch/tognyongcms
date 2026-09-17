@@ -8,7 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"dulizhan/internal/content"
 	"dulizhan/internal/errs"
+	"dulizhan/internal/i18n"
+	"dulizhan/internal/media"
+	schemareg "dulizhan/internal/schema"
+	"dulizhan/internal/seed"
 	"dulizhan/internal/store"
 )
 
@@ -771,5 +776,168 @@ func TestCategoryRepo(t *testing.T) {
 	}
 	if _, err := repo.GetByID(ctx, c.ID); err != errs.ErrNotFound {
 		t.Errorf("删除后 = %v", err)
+	}
+}
+
+func TestCountContentByLang(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("DULIZHAN_SEED_NO_DOWNLOAD", "1")
+	st := newTestStore(t)
+	if _, err := i18n.New([]string{"zh", "en"}, "zh", false); err != nil {
+		t.Fatal(err)
+	}
+	svc := content.New(st, schemareg.NewRegistry(), []string{"zh", "en"})
+	med := media.NewLocalStore(t.TempDir(), "/media")
+	if err := seed.Run(ctx, st, svc, med); err != nil {
+		t.Fatal(err)
+	}
+	news, err := st.CategoryRepo().GetBySlug(ctx, "news")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zh, err := st.CategoryRepo().CountContentByLang(ctx, news.ID, "zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zh != 3 {
+		t.Errorf("news zh count = %d, want 3", zh)
+	}
+	en, err := st.CategoryRepo().CountContentByLang(ctx, news.ID, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if en != 3 {
+		t.Errorf("news en count = %d, want 3", en)
+	}
+}
+
+func TestListByTypeLangStatusCategory(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("DULIZHAN_SEED_NO_DOWNLOAD", "1")
+	st := newTestStore(t)
+	if _, err := i18n.New([]string{"zh", "en"}, "zh", false); err != nil {
+		t.Fatal(err)
+	}
+	svc := content.New(st, schemareg.NewRegistry(), []string{"zh", "en"})
+	med := media.NewLocalStore(t.TempDir(), "/media")
+	if err := seed.Run(ctx, st, svc, med); err != nil {
+		t.Fatal(err)
+	}
+	products, err := st.CategoryRepo().GetBySlug(ctx, "products")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// products 分类 zh：products-1/products-2 两行（子分类 chopper/sausage-machine/mixer 不属于 products id）
+	items, err := st.ContentRepo().ListByTypeLangStatusCategory(ctx, "article", "zh", "", products.ID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Errorf("products zh rows = %d, want 2", len(items))
+	}
+	n, err := st.ContentRepo().CountByTypeLangStatusCategory(ctx, "article", "zh", "", products.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("products zh count = %d, want 2", n)
+	}
+}
+
+func TestCategoryNameEn(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	repo := st.CategoryRepo()
+	c := &store.Category{Name: "产品", NameEn: "Products", Slug: "products-en"}
+	if err := repo.Create(ctx, c); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := repo.GetByID(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.NameEn != "Products" {
+		t.Errorf("NameEn = %q, want Products", got.NameEn)
+	}
+	got.NameEn = "Prod"
+	if err := repo.Update(ctx, &got); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	got2, err := repo.GetBySlug(ctx, "products-en")
+	if err != nil {
+		t.Fatalf("GetBySlug: %v", err)
+	}
+	if got2.NameEn != "Prod" {
+		t.Errorf("update 后 NameEn = %q, want Prod", got2.NameEn)
+	}
+	kid := &store.Category{Name: "斩拌机", NameEn: "Chopper", Slug: "chopper-en", ParentID: c.ID}
+	if err := repo.Create(ctx, kid); err != nil {
+		t.Fatalf("Create kid: %v", err)
+	}
+	kids, err := repo.ListChildren(ctx, c.ID)
+	if err != nil || len(kids) != 1 || kids[0].NameEn != "Chopper" {
+		t.Errorf("ListChildren NameEn = %+v, %v", kids, err)
+	}
+	desc, err := repo.Descendants(ctx, c.ID)
+	if err != nil || len(desc) != 1 || desc[0].NameEn != "Chopper" {
+		t.Errorf("Descendants NameEn = %+v, %v", desc, err)
+	}
+	all, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	found := false
+	for _, x := range all {
+		if x.ID == c.ID && x.NameEn == "Prod" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("List 未带回 name_en: %+v", all)
+	}
+}
+
+func TestSearchByTypeLangCategory(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("DULIZHAN_SEED_NO_DOWNLOAD", "1")
+	st := newTestStore(t)
+	if _, err := i18n.New([]string{"zh", "en"}, "zh", false); err != nil {
+		t.Fatal(err)
+	}
+	svc := content.New(st, schemareg.NewRegistry(), []string{"zh", "en"})
+	med := media.NewLocalStore(t.TempDir(), "/media")
+	if err := seed.Run(ctx, st, svc, med); err != nil {
+		t.Fatal(err)
+	}
+	products, err := st.CategoryRepo().GetBySlug(ctx, "products")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// products 分类下 zh 搜 "品"（products-1"旗舰产品一览"/products-2"新品评测"标题命中"品"）→ 2 条
+	items, err := st.ContentRepo().SearchByTypeLangCategory(ctx, "article", "zh", "品", products.ID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Errorf("products zh search rows = %d, want 2", len(items))
+	}
+	n, err := st.ContentRepo().CountSearchCategory(ctx, "article", "zh", "品", products.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("products zh search count = %d, want 2", n)
+	}
+	// 空结果：about 分类搜 "品" → 0
+	about, err := st.CategoryRepo().GetBySlug(ctx, "about")
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty, err := st.ContentRepo().SearchByTypeLangCategory(ctx, "article", "zh", "品", about.ID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("about zh search rows = %d, want 0", len(empty))
 	}
 }

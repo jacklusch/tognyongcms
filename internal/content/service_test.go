@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"dulizhan/internal/config"
 	"dulizhan/internal/errs"
 	"dulizhan/internal/schema"
 	"dulizhan/internal/store"
@@ -24,10 +25,10 @@ func newTestService(t *testing.T) (*Service, store.Store) {
 		Name:  "article",
 		Label: "文章",
 		Fields: []schema.Field{
-			{Name: "title", Label: "标题", Type: schema.TypeText, Required: true, Indexed: true},
+			{Name: "title", Label: "标题", Type: schema.TypeText, Required: true, Indexed: true, Translatable: true},
 			{Name: "slug", Label: "别名", Type: schema.TypeSlug},
-			{Name: "content", Label: "正文", Type: schema.TypeRichText},
-			{Name: "excerpt", Label: "摘要", Type: schema.TypeTextarea},
+			{Name: "content", Label: "正文", Type: schema.TypeRichText, Translatable: true},
+			{Name: "excerpt", Label: "摘要", Type: schema.TypeTextarea, Translatable: true},
 		},
 	}
 	if err := svc.CreateType(context.Background(), &article); err != nil {
@@ -69,6 +70,23 @@ func TestCreateAndGetPublished(t *testing.T) {
 	}
 	if got.TypeName != "article" {
 		t.Errorf("TypeName = %q", got.TypeName)
+	}
+}
+
+// 纯中文标题且未填 slug 时，自动生成的 slug 不应为空（需兜底，否则前台链接失效）。
+func TestCreateChineseTitleAutoSlug(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+
+	e, err := svc.Create(ctx, "article", "zh", map[string]any{
+		"title":   "新建文章",
+		"content": "<p>正文</p>",
+	}, 1)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if e.Content.Slug == "" {
+		t.Error("纯中文标题自动生成 slug 为空，应兜底为合法 slug")
 	}
 }
 
@@ -312,5 +330,261 @@ func TestTranslationOwnership(t *testing.T) {
 	// 翻译不存在的组 → NotFound
 	if _, err := svc.CreateTranslation(ctx, "article", "de", "nope", map[string]any{"title": "De"}, moderator); err != errs.ErrNotFound {
 		t.Errorf("不存在组 = %v, want ErrNotFound", err)
+	}
+}
+
+// mockTranslator 固定返回翻译文本；TranslateRichText 模拟 html.Render 输出的 <html>/<head>/<body> 外壳，
+// 用于验证 EnsureTranslation 落库前 stripHTMLShell 剥离外壳。
+type mockTranslator struct{ translated string }
+
+func (m *mockTranslator) TranslateText(ctx context.Context, text, source, target string) (string, error) {
+	if m.translated == "" {
+		return "", errors.New("翻译失败")
+	}
+	return m.translated, nil
+}
+
+func (m *mockTranslator) TranslateRichText(ctx context.Context, htmlStr, source, target string) (string, error) {
+	if m.translated == "" {
+		return "", errors.New("翻译失败")
+	}
+	return "<html><head><title>x</title></head><body><p>" + m.translated + "</p></body></html>", nil
+}
+
+func TestEnsureTranslationCreatesEn(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	// 注入翻译器（enabled）
+	cfg := &config.TranslateConfig{Enabled: true, SourceLang: "zh", TargetLang: "en"}
+	svc.SetTranslator(&mockTranslator{translated: "EN-TRANSLATED"}, cfg)
+
+	e, err := svc.Create(ctx, "article", "zh", map[string]any{
+		"title":   "你好世界",
+		"slug":    "hello",
+		"content": "<p>正文内容</p>",
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 发布 zh，验证 en 状态跟随 zh（published），前台可查
+	if err := svc.SetStatus(ctx, e.Content.ID, "published"); err != nil {
+		t.Fatal(err)
+	}
+	st, err := svc.EnsureTranslation(ctx, "article", "zh", e.Content.ContentID, e.Fields, Actor{UserID: 1, IsModerator: true})
+	if err != nil {
+		t.Fatalf("EnsureTranslation: %v", err)
+	}
+	if !st.Triggered || !st.Created || st.Status != "translated" {
+		t.Errorf("status = %+v", st)
+	}
+	// en 已生成
+	en, err := svc.GetPublishedBySlugLang(ctx, "article", "hello", "en")
+	if err != nil {
+		t.Fatalf("en 未生成: %v", err)
+	}
+	if en.Content.Title != "EN-TRANSLATED" {
+		t.Errorf("en title = %q", en.Content.Title)
+	}
+	// 富文本翻译结果已剥离 html.Render 外壳，只剩 body 内内容
+	if en.Fields["content"] != "<p>EN-TRANSLATED</p>" {
+		t.Errorf("en content = %v", en.Fields["content"])
+	}
+	// 非可翻译字段（slug）原样复制
+	if en.Fields["slug"] != "hello" {
+		t.Errorf("en slug = %v", en.Fields["slug"])
+	}
+	// 正常翻译路径不得写内部 fallback 标记
+	if _, ok := en.Fields["_auto_translate_fallback"]; ok {
+		t.Errorf("正常翻译 en 不应有 _auto_translate_fallback 标记, fields = %v", en.Fields)
+	}
+}
+
+func TestEnsureTranslationDisabled(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	// 未注入翻译器 → Triggered:false
+	e, _ := svc.Create(ctx, "article", "zh", map[string]any{"title": "x", "slug": "a", "content": "<p>x</p>"}, 1)
+	st, err := svc.EnsureTranslation(ctx, "article", "zh", e.Content.ContentID, e.Fields, Actor{UserID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Triggered {
+		t.Error("未注入翻译器应 Triggered:false")
+	}
+}
+
+func TestEnsureTranslationFallback(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	// 注入翻译器（enabled）但 translated 为空 → TranslateText/TranslateRichText 返回错误
+	cfg := &config.TranslateConfig{Enabled: true, SourceLang: "zh", TargetLang: "en"}
+	svc.SetTranslator(&mockTranslator{translated: ""}, cfg)
+
+	e, err := svc.Create(ctx, "article", "zh", map[string]any{
+		"title":   "你好世界",
+		"slug":    "hello",
+		"content": "<p>正文内容</p>",
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 发布 zh
+	if err := svc.SetStatus(ctx, e.Content.ID, "published"); err != nil {
+		t.Fatal(err)
+	}
+	st, err := svc.EnsureTranslation(ctx, "article", "zh", e.Content.ContentID, e.Fields, Actor{UserID: 1, IsModerator: true})
+	if err != nil {
+		t.Fatalf("EnsureTranslation: %v", err)
+	}
+	if !st.Triggered || !st.Created || st.Status != "fallback" {
+		t.Errorf("status = %+v", st)
+	}
+	// en 已生成（降级复制 zh 字段），但强制 draft → 前台查不到
+	if _, err := svc.GetPublishedBySlugLang(ctx, "article", "hello", "en"); err != errs.ErrNotFound {
+		t.Errorf("fallback en 应强制 draft（前台查不到）, got %v", err)
+	}
+	entries, err := svc.ListByContentID(ctx, e.Content.ContentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var en *Entry
+	for i := range entries {
+		if entries[i].Content.Lang == "en" {
+			en = &entries[i]
+			break
+		}
+	}
+	if en == nil {
+		t.Fatal("en 未生成")
+	}
+	if en.Content.Status != "draft" {
+		t.Errorf("en status = %q, want draft", en.Content.Status)
+	}
+	// en 字段复制了 zh 内容
+	if en.Content.Title != "你好世界" {
+		t.Errorf("en title = %q", en.Content.Title)
+	}
+	if en.Fields["content"] != "<p>正文内容</p>" {
+		t.Errorf("en content = %v", en.Fields["content"])
+	}
+	if en.Fields["slug"] != "hello" {
+		t.Errorf("en slug = %v", en.Fields["slug"])
+	}
+	// fallback 降级草稿带内部标记，syncTranslationStatus 据此跳过状态同步
+	fb, ok := en.Fields["_auto_translate_fallback"].(bool)
+	if !ok || !fb {
+		t.Errorf("fallback en 应带 _auto_translate_fallback 标记, fields = %v", en.Fields)
+	}
+}
+
+// 发现 6：已存在 en 时再次 EnsureTranslation 走覆盖路径（Created=false、内容更新）。
+func TestEnsureTranslationOverwritesExistingEn(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	cfg := &config.TranslateConfig{Enabled: true, SourceLang: "zh", TargetLang: "en"}
+	actor := Actor{UserID: 1, IsModerator: true}
+
+	svc.SetTranslator(&mockTranslator{translated: "EN-V1"}, cfg)
+	e, err := svc.Create(ctx, "article", "zh", map[string]any{
+		"title":   "第一版",
+		"slug":    "hello",
+		"content": "<p>正文一</p>",
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := svc.EnsureTranslation(ctx, "article", "zh", e.Content.ContentID, e.Fields, actor)
+	if err != nil || !st.Triggered || !st.Created {
+		t.Fatalf("首次 EnsureTranslation: %+v err=%v", st, err)
+	}
+
+	// 改 zh 后再翻译（覆盖）
+	upd, err := svc.Update(ctx, e.Content.ID, map[string]any{"title": "第二版", "slug": "hello", "content": "<p>正文二</p>"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.SetTranslator(&mockTranslator{translated: "EN-V2"}, cfg)
+	st2, err := svc.EnsureTranslation(ctx, "article", "zh", e.Content.ContentID, upd.Fields, actor)
+	if err != nil {
+		t.Fatalf("二次 EnsureTranslation: %v", err)
+	}
+	if !st2.Triggered || st2.Created {
+		t.Errorf("二次 status = %+v, want Triggered=true/Created=false", st2)
+	}
+	entries, err := svc.ListByContentID(ctx, e.Content.ContentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var en *Entry
+	for i := range entries {
+		if entries[i].Content.Lang == "en" {
+			en = &entries[i]
+			break
+		}
+	}
+	if en == nil {
+		t.Fatal("en 未生成")
+	}
+	if en.Content.Title != "EN-V2" {
+		t.Errorf("en title = %q, want EN-V2（覆盖更新）", en.Content.Title)
+	}
+	if en.Fields["content"] != "<p>EN-V2</p>" {
+		t.Errorf("en content = %v, want <p>EN-V2</p>", en.Fields["content"])
+	}
+}
+
+// 发现 6：非源语言调用 EnsureTranslation 不触发。
+func TestEnsureTranslationNotSourceLang(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	cfg := &config.TranslateConfig{Enabled: true, SourceLang: "zh", TargetLang: "en"}
+	svc.SetTranslator(&mockTranslator{translated: "X"}, cfg)
+
+	e, err := svc.Create(ctx, "article", "en", map[string]any{"title": "Hello", "slug": "hi", "content": "<p>hi</p>"}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := svc.EnsureTranslation(ctx, "article", "en", e.Content.ContentID, e.Fields, Actor{UserID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Triggered {
+		t.Error("非源语言应 Triggered:false")
+	}
+}
+
+// 发现 6：zh 发布后再保存（EnsureTranslation 重跑），en 状态跟随 published、前台可查。
+func TestEnsureTranslationPublishFollows(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	cfg := &config.TranslateConfig{Enabled: true, SourceLang: "zh", TargetLang: "en"}
+	svc.SetTranslator(&mockTranslator{translated: "EN"}, cfg)
+	actor := Actor{UserID: 1, IsModerator: true}
+
+	e, err := svc.Create(ctx, "article", "zh", map[string]any{
+		"title":   "标题",
+		"slug":    "hello",
+		"content": "<p>正文</p>",
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 首次保存：en 创建并跟随 zh（draft），前台不可查
+	if _, err := svc.EnsureTranslation(ctx, "article", "zh", e.Content.ContentID, e.Fields, actor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.GetPublishedBySlugLang(ctx, "article", "hello", "en"); err != errs.ErrNotFound {
+		t.Errorf("首次保存 en 应 draft（前台查不到）, got %v", err)
+	}
+	// 发布 zh
+	if err := svc.SetStatus(ctx, e.Content.ID, "published"); err != nil {
+		t.Fatal(err)
+	}
+	// 发布后再次保存 zh → EnsureTranslation 重跑，en 状态跟随 published
+	if _, err := svc.EnsureTranslation(ctx, "article", "zh", e.Content.ContentID, e.Fields, actor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.GetPublishedBySlugLang(ctx, "article", "hello", "en"); err != nil {
+		t.Errorf("zh 发布后 en 应 published 可查: %v", err)
 	}
 }
