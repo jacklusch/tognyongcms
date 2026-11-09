@@ -1,0 +1,55 @@
+{{define "head"}}
+<link rel="stylesheet" href="{{asset "/css/main.css"}}">
+{{end}}
+{{define "body"}}
+{{template "nav" .}}
+<header class="hero">
+  <div class="hero-bg"></div>
+  <div>
+    <h1>{{t $.Lang "hero_title"}}</h1>
+    <p>{{.Site.Description}}</p>
+    <a class="cta" href="{{typeURL $.Lang "article"}}">{{t $.Lang "learn_more"}}</a>
+  </div>
+</header>
+<main>
+  {{if .Items}}
+  <section class="section">
+    <h2 class="section-title">{{t $.Lang "products"}}</h2>
+    <p class="section-sub">{{t $.Lang "products_sub"}}</p>
+    <div class="grid">
+      {{$prod := .Products}}{{if not $prod}}{{$prod = .Items}}{{end}}
+      {{$n := 6}}{{if lt (len $prod) $n}}{{$n = len $prod}}{{end}}{{range slice $prod 0 $n}}
+      <a class="card" href="{{url $.Lang .}}">
+        {{if .Fields.cover}}<img src="{{media .Fields.cover}}" alt="{{.Content.Title}}">{{else}}<div class="card-img-placeholder"></div>{{end}}
+        <div class="card-body">
+          <h3>{{.Content.Title}}</h3>
+          {{if .Fields.excerpt}}<p>{{.Fields.excerpt}}</p>{{end}}
+          <span class="more">{{t $.Lang "view_more"}} →</span>
+        </div>
+      </a>
+      {{end}}
+    </div>
+  </section>
+  <section class="section feature">
+    <h2 class="section-title">{{t $.Lang "news"}}</h2>
+    <p class="section-sub">{{t $.Lang "news_sub"}}</p>
+    <div class="news-list">
+      {{$news := .News}}{{if not $news}}{{$news = .Items}}{{end}}
+      {{$n := 3}}{{if lt (len $news) $n}}{{$n = len $news}}{{end}}{{range slice $news 0 $n}}
+      <a class="news-item" href="{{url $.Lang .}}">
+        {{if .Fields.cover}}<img src="{{media .Fields.cover}}" class="news-thumb" alt="{{.Content.Title}}">{{else}}<div class="card-img-placeholder"></div>{{end}}
+        <div class="news-body">
+          {{if .Content.PublishedAt}}<time>{{.Content.PublishedAt.Format "2006-01-02 15:04:05"}}</time>{{end}}
+          <h4>{{.Content.Title}}</h4>
+        </div>
+      </a>
+      {{end}}
+    </div>
+  </section>
+  {{else}}
+  <section class="section"><p>{{t $.Lang "no_content"}}</p></section>
+  {{end}}
+</main>
+{{template "footer" .}}
+<script src="{{asset "/js/main.js"}}"></script>
+{{end}}

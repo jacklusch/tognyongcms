@@ -77,6 +77,7 @@ type Category struct {
 	ID          int64     `json:"id"`
 	ParentID    int64     `json:"parent_id"`
 	Name        string    `json:"name"`
+	NameEn      string    `json:"name_en"`
 	Slug        string    `json:"slug"`
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`

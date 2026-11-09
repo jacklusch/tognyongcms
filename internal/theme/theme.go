@@ -68,9 +68,11 @@ type Data struct {
 	Meta     seo.Meta
 	Menus    []Menu `json:"menus"`
 
-	EntryCategory    string         `json:"entry_category"`
-	SubCategories    []CategoryInfo `json:"sub_categories"`
-	EntryCategoryURL string         `json:"entry_category_url"`
+	EntryCategory    string          `json:"entry_category"`
+	SubCategories    []CategoryInfo  `json:"sub_categories"`
+	EntryCategoryURL string          `json:"entry_category_url"`
+	Products         []content.Entry `json:"products"` // 首页产品中心（分类聚合）
+	News             []content.Entry `json:"news"`     // 首页新闻动态（分类聚合）
 }
 
 type Config struct {
@@ -96,14 +98,17 @@ type Theme struct {
 	cache     map[string]*template.Template
 	mu        sync.Mutex
 	loadedAt  time.Time
+	// entryCatURL 由 server 注入，把 entry 解析为其分类归档 URL；nil 时模板回退详情页。
+	entryCatURL func(lang string, e content.Entry) string
 }
 
 type Loader struct {
-	ThemesDir string
-	reg       *i18n.Registry
-	cache     map[string]*Theme
-	mu        sync.Mutex
-	debug     bool
+	ThemesDir   string
+	reg         *i18n.Registry
+	cache       map[string]*Theme
+	mu          sync.Mutex
+	debug       bool
+	entryCatURL func(lang string, e content.Entry) string
 }
 
 func NewLoader(themesDir string, reg *i18n.Registry, debug ...bool) *Loader {
@@ -112,6 +117,13 @@ func NewLoader(themesDir string, reg *i18n.Registry, debug ...bool) *Loader {
 		d = debug[0]
 	}
 	return &Loader{ThemesDir: themesDir, reg: reg, cache: map[string]*Theme{}, debug: d}
+}
+
+// SetEntryCategoryURL 注入分类归档 URL 解析器，之后 Load 的主题共享该解析器。
+func (l *Loader) SetEntryCategoryURL(fn func(lang string, e content.Entry) string) {
+	l.mu.Lock()
+	l.entryCatURL = fn
+	l.mu.Unlock()
 }
 
 func (l *Loader) Get(name string) (*Theme, error) {
@@ -186,6 +198,9 @@ func (l *Loader) Load(name string) (*Theme, error) {
 		}
 		th.Locales[lang] = loc
 	}
+	l.mu.Lock()
+	th.entryCatURL = l.entryCatURL
+	l.mu.Unlock()
 	th.reg = l.reg
 	th.funcs = th.buildFuncs()
 	th.loadedAt = time.Now()

@@ -7,13 +7,26 @@ database:
   driver: "sqlite"          # sqlite（当前支持）；PG/MySQL 见 docs/database-compatibility.md
   dsn: "dulizhan.db"
 site:
-  name: "Dulizhan CMS"
-  url: "http://localhost:8080"
-  description: "一个通用的 Go CMS"
-  default_lang: "zh"
-  languages: ["zh", "en"]
+  name: "金博威机械"                  # 站点名（默认品牌名，zh）
+  names:                              # 可选：按语言的品牌名（title 后缀 / og:site_name / JSON-LD）
+    zh: "金博威机械"
+    en: "Jinbowei Machinery"
+  url: "http://localhost:8080"        # 上线后改为正式域名
+  description: "站点默认描述（zh）"
+  descriptions:                       # 可选：按语言的 meta description
+    zh: "中文描述"
+    en: "English description"
+  home_titles:                        # 可选：按语言的首页 title（含关键词）
+    zh: "金博威机械 - 关键词"
+    en: "Jinbowei Machinery - Keywords"
+  og_image: "/themes/default/img/og-default.png"   # 分享默认图（相对路径，输出时拼 site.url）
+  default_lang: "en"
+  languages: ["en", "zh"]
+  prefix_default_lang: true          # true 时所有语言 URL 带前缀（/en/... /zh/...），默认语言根路径仍可访问
   theme: "default"
   themes_dir: "./themes"
+  # home_products_category: "products"   # 首页"产品中心"取该分类（含子分类）内容
+  # home_news_category: "news"           # 首页"新闻动态"取该分类（含子分类）内容
 media:
   driver: "local"           # local | s3
   # s3:
@@ -23,3 +36,12 @@ media:
   #   access_key: "xxx"
   #   secret_key: "yyy"
   #   public_base_url: ""             # 媒体公开 URL 前缀（CDN/自定义域名）
+
+# translate:
+#   enabled: false                 # true 时保存源语言内容自动翻译生成目标语言
+#   provider: "openai"             # openai 兼容接口
+#   api_key: ""                    # env: DULIZHAN_TRANSLATE_API_KEY
+#   base_url: "https://api.openai.com/v1"
+#   model: "gpt-4o-mini"
+#   source_lang: "zh"              # 触发翻译的源语言（默认站点默认语言）
+#   target_lang: "en"              # 自动生成的目标语言

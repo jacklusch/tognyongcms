@@ -35,6 +35,7 @@ func Register(g *gin.RouterGroup, d Deps) {
 
 	g.POST("/media/upload", auth.RequireAuth(d.Auth), auth.RequirePerm("media.upload"), d.HandleMediaUpload)
 	g.GET("/media", auth.RequireAuth(d.Auth), auth.RequirePerm("media.upload"), d.HandleMediaList)
+	g.POST("/media/batch-delete", auth.RequireAuth(d.Auth), auth.RequirePerm("media.delete"), d.HandleMediaBatchDelete)
 	g.DELETE("/media/:id", auth.RequireAuth(d.Auth), auth.RequirePerm("media.delete"), d.HandleMediaDelete)
 
 	g.GET("/settings", auth.RequireAuth(d.Auth), auth.RequirePerm("settings.manage"), d.HandleSettings)

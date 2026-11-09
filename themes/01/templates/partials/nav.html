@@ -1,0 +1,42 @@
+{{define "nav"}}
+<div class="topbar" id="top">
+  <div class="topbar-inner">
+    <span class="topbar-site">{{.Site.Name}}</span>
+    <span class="lang-switch">
+      {{$current := .Lang}}
+      {{range .Langs}}
+        {{if eq .Code $current}}
+          <span class="current">{{.Label}}</span>
+        {{else}}
+          <a href="{{home .Code}}">{{.Label}}</a>
+        {{end}}
+      {{end}}
+    </span>
+  </div>
+</div>
+<nav class="site-nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="{{home $.Lang}}">{{.Site.Name}}</a>
+    <button class="nav-toggle" type="button" aria-label="菜单">☰</button>
+    <div class="nav-links" id="nav-links">
+      {{$main := (firstMenu $)}}
+      {{if $main}}
+        {{range $main}}
+          {{if .Children}}
+            <div class="nav-item has-children">
+              <a href="{{.URL}}">{{.Label}}</a>
+              <div class="dropdown">
+                {{range .Children}}<a href="{{.URL}}">{{.Label}}</a>{{end}}
+              </div>
+            </div>
+          {{else}}
+            <a href="{{.URL}}">{{.Label}}</a>
+          {{end}}
+        {{end}}
+      {{else}}
+        <a href="{{typeURL $.Lang "article"}}">{{t $.Lang "articles"}}</a>
+      {{end}}
+    </div>
+  </div>
+</nav>
+{{end}}

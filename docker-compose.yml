@@ -1,0 +1,14 @@
+services:
+  cms:
+    build: .
+    image: dulizhan-cms:latest
+    container_name: dulizhan-cms
+    restart: always
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data:/app/data
+      - ./themes:/app/themes
+      - ./config.yaml:/app/config.yaml:ro

@@ -24,8 +24,8 @@ func Run(ctx context.Context, st store.Store, svc *content.Service, med media.Me
 			{Name: "excerpt", Label: "摘要", Type: schema.TypeTextarea, Translatable: true},
 			{Name: "content", Label: "正文", Type: schema.TypeRichText, Required: true, Translatable: true},
 			{Name: "cover", Label: "封面图", Type: schema.TypeImage},
-			{Name: "published_on", Label: "发布日期", Type: schema.TypeDate},
-			{Name: "category", Label: "分类", Type: schema.TypeRelation, RelationType: "category"},
+			{Name: "published_on", Label: "发布日期", Type: schema.TypeDate, Required: true},
+			{Name: "category", Label: "分类", Type: schema.TypeRelation, RelationType: "category", Required: true},
 		},
 	}
 	if _, err := svc.GetType(ctx, "article"); err != nil {
@@ -49,11 +49,41 @@ func Run(ctx context.Context, st store.Store, svc *content.Service, med media.Me
 		}
 	}
 
-	// 先建 zh，再把 en 建为同组翻译（同 content_id），保证多语言切换可用。
+	contact := schema.ContentType{
+		Name:  "contact",
+		Label: "联系我们",
+		Fields: []schema.Field{
+			{Name: "title", Label: "标题", Type: schema.TypeText, Required: true, Translatable: true},
+			{Name: "slug", Label: "别名", Type: schema.TypeSlug, Translatable: true},
+			{Name: "address", Label: "地址", Type: schema.TypeTextarea, Translatable: true},
+			{Name: "phone", Label: "电话", Type: schema.TypeText},
+			{Name: "email", Label: "邮箱", Type: schema.TypeText},
+			{Name: "hours", Label: "营业时间", Type: schema.TypeText, Translatable: true},
+			{Name: "map_embed", Label: "地图嵌入代码", Type: schema.TypeTextarea},
+		},
+	}
+	if _, err := svc.GetType(ctx, "contact"); err != nil {
+		if err := svc.CreateType(ctx, &contact); err != nil {
+			return fmt.Errorf("创建内容类型 contact: %w", err)
+		}
+	}
+
+	// 建分类、演示文章与菜单（hello-zh/en 演示文章在分类建好后创建，见下）
+	if err := seedDemoData(ctx, st, svc, med); err != nil {
+		return err
+	}
+
+	// 演示首页文章 hello-zh（news 分类，双语同组）
+	newsCat, err := st.CategoryRepo().GetBySlug(ctx, "news")
+	if err != nil {
+		return fmt.Errorf("查询 news 分类: %w", err)
+	}
 	if _, err := svc.GetPublishedBySlugLang(ctx, "article", "hello-zh", "zh"); err != nil {
 		e, err := svc.Create(ctx, "article", "zh", map[string]any{
 			"title": "你好，世界", "slug": "hello-zh",
 			"excerpt": "这是第一篇中文示例文章", "content": "<p>欢迎使用 Dulizhan CMS。</p>",
+			"published_on": "2026-01-15",
+			"category":     fmt.Sprintf("%d", newsCat.ID),
 		}, 0)
 		if err != nil {
 			return fmt.Errorf("创建示例文章 hello-zh: %w", err)
@@ -65,6 +95,8 @@ func Run(ctx context.Context, st store.Store, svc *content.Service, med media.Me
 		te, err := svc.CreateTranslation(ctx, "article", "en", e.Content.ContentID, map[string]any{
 			"title": "Hello World", "slug": "hello-en",
 			"excerpt": "The first sample article", "content": "<p>Welcome to Dulizhan CMS.</p>",
+			"published_on": "2026-01-15",
+			"category":     fmt.Sprintf("%d", newsCat.ID),
 		}, content.Actor{UserID: 0, IsModerator: true})
 		if err != nil {
 			return fmt.Errorf("创建示例文章 hello-en 翻译: %w", err)
@@ -73,25 +105,27 @@ func Run(ctx context.Context, st store.Store, svc *content.Service, med media.Me
 			return err
 		}
 	}
-	// hello-zh/en 归入 news 分类（分类创建后设置）
-	if err := seedDemoData(ctx, st, svc, med); err != nil {
-		return err
-	}
 	return nil
 }
 
 // seedDemoData 建分类、双语演示文章与 main 菜单（幂等）。
 func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med media.MediaStore) error {
-	demoCategories := []struct{ Name, Slug string }{
-		{"新闻", "news"}, {"关于", "about"}, {"产品", "products"},
+	demoCategories := []struct{ Name, NameEn, Slug string }{
+		{"新闻", "News", "news"}, {"关于", "About", "about"}, {"产品", "Products", "products"},
 	}
 	catIDs := map[string]int64{}
 	for _, c := range demoCategories {
 		if existing, err := st.CategoryRepo().GetBySlug(ctx, c.Slug); err == nil {
+			if existing.NameEn == "" && c.NameEn != "" {
+				existing.NameEn = c.NameEn
+				if err := st.CategoryRepo().Update(ctx, &existing); err != nil {
+					return fmt.Errorf("回填分类 %s 英文名: %w", c.Slug, err)
+				}
+			}
 			catIDs[c.Slug] = existing.ID
 			continue
 		}
-		cat := &store.Category{Name: c.Name, Slug: c.Slug}
+		cat := &store.Category{Name: c.Name, NameEn: c.NameEn, Slug: c.Slug}
 		if err := st.CategoryRepo().Create(ctx, cat); err != nil {
 			return fmt.Errorf("创建分类 %s: %w", c.Slug, err)
 		}
@@ -99,16 +133,22 @@ func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med
 	}
 
 	// 子分类（幂等：GetBySlug 已存在跳过），ParentID = 父分类 id
-	subCategories := map[string][]struct{ Name, Slug string }{
-		"products": {{"斩拌机", "chopper"}, {"香肠机", "sausage-machine"}, {"拌馅机", "mixer"}},
+	subCategories := map[string][]struct{ Name, NameEn, Slug string }{
+		"products": {{"斩拌机", "Chopper", "chopper"}, {"香肠机", "Sausage Machine", "sausage-machine"}, {"拌馅机", "Mixer", "mixer"}},
 	}
 	for parentSlug, subs := range subCategories {
 		for _, sc := range subs {
 			if existing, err := st.CategoryRepo().GetBySlug(ctx, sc.Slug); err == nil {
+				if existing.NameEn == "" && sc.NameEn != "" {
+					existing.NameEn = sc.NameEn
+					if err := st.CategoryRepo().Update(ctx, &existing); err != nil {
+						return fmt.Errorf("回填子分类 %s 英文名: %w", sc.Slug, err)
+					}
+				}
 				catIDs[sc.Slug] = existing.ID
 				continue
 			}
-			cat := &store.Category{Name: sc.Name, Slug: sc.Slug, ParentID: catIDs[parentSlug]}
+			cat := &store.Category{Name: sc.Name, NameEn: sc.NameEn, Slug: sc.Slug, ParentID: catIDs[parentSlug]}
 			if err := st.CategoryRepo().Create(ctx, cat); err != nil {
 				return fmt.Errorf("创建子分类 %s: %w", sc.Slug, err)
 			}
@@ -155,8 +195,9 @@ func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med
 			e, err := svc.Create(ctx, "article", "zh", map[string]any{
 				"title": a.ZhTitle, "slug": a.Slug,
 				"excerpt": firstSentence(a.ZhBody), "content": a.ZhBody,
-				"category": fmt.Sprintf("%d", catIDs[catSlug]),
-				"cover":    cover,
+				"category":     fmt.Sprintf("%d", catIDs[catSlug]),
+				"cover":        cover,
+				"published_on": "2026-01-15",
 			}, 0)
 			if err != nil {
 				return fmt.Errorf("创建演示文章 %s: %w", a.Slug, err)
@@ -167,8 +208,9 @@ func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med
 			te, err := svc.CreateTranslation(ctx, "article", "en", e.Content.ContentID, map[string]any{
 				"title": a.EnTitle, "slug": a.Slug + "-en",
 				"excerpt": firstSentence(a.EnBody), "content": a.EnBody,
-				"category": fmt.Sprintf("%d", catIDs[catSlug]),
-				"cover":    cover,
+				"category":     fmt.Sprintf("%d", catIDs[catSlug]),
+				"cover":        cover,
+				"published_on": "2026-01-15",
 			}, content.Actor{UserID: 0, IsModerator: true})
 			if err != nil {
 				return fmt.Errorf("创建演示翻译 %s-en: %w", a.Slug, err)
@@ -200,11 +242,23 @@ func seedDemoData(ctx context.Context, st store.Store, svc *content.Service, med
 		}
 	}
 
+	// 联系我们单页（zh + en，幂等）
+	if err := seedContactPage(ctx, svc); err != nil {
+		return err
+	}
+
 	// main 菜单（zh/en 幂等）
 	if err := seedMainMenu(ctx, st, "zh"); err != nil {
 		return err
 	}
 	if err := seedMainMenu(ctx, st, "en"); err != nil {
+		return err
+	}
+	// social 菜单（zh/en 幂等，预置社交平台占位）
+	if err := seedSocialMenu(ctx, st, "zh"); err != nil {
+		return err
+	}
+	if err := seedSocialMenu(ctx, st, "en"); err != nil {
 		return err
 	}
 	return nil
@@ -240,6 +294,13 @@ func seedMainMenu(ctx context.Context, st store.Store, lang string) error {
 			label = labels[slug].En
 		}
 		it := store.MenuItem{Label: label, Type: "custom", URL: "/category/" + slug}
+		if slug == "about" {
+			// 关于我们是单页：直接指向内容详情页，而非分类列表
+			it.URL = "/article/about-1"
+			if lang == "en" {
+				it.URL = "/article/about-1-en"
+			}
+		}
 		if slug == "products" {
 			for _, sub := range []string{"chopper", "sausage-machine", "mixer"} {
 				subLabel := subLabels[sub].Zh
@@ -251,8 +312,69 @@ func seedMainMenu(ctx context.Context, st store.Store, lang string) error {
 		}
 		items = append(items, it)
 	}
+	contactLabel := "联系我们"
+	if lang == "en" {
+		contactLabel = "Contact Us"
+	}
+	items = append(items, store.MenuItem{Label: contactLabel, Type: "custom", URL: "/contact"})
 	itemsJSON, _ := json.Marshal(items)
 	return st.MenuRepo().Create(ctx, &store.Menu{Name: "main", Lang: lang, Items: string(itemsJSON)})
+}
+
+// seedSocialMenu 建 zh/en 的 social 菜单（幂等），预置社交平台占位链接，后台可改 URL/删除。
+func seedSocialMenu(ctx context.Context, st store.Store, lang string) error {
+	if menus, err := st.MenuRepo().ListByLang(ctx, lang); err == nil {
+		for _, m := range menus {
+			if m.Name == "social" {
+				return nil // 已有
+			}
+		}
+	}
+	items := []store.MenuItem{
+		{Label: "TikTok", Type: "custom", URL: "https://www.tiktok.com/"},
+		{Label: "YouTube", Type: "custom", URL: "https://www.youtube.com/"},
+		{Label: "Facebook", Type: "custom", URL: "https://www.facebook.com/"},
+		{Label: "X", Type: "custom", URL: "https://x.com/"},
+		{Label: "Instagram", Type: "custom", URL: "https://www.instagram.com/"},
+	}
+	itemsJSON, _ := json.Marshal(items)
+	return st.MenuRepo().Create(ctx, &store.Menu{Name: "social", Lang: lang, Items: string(itemsJSON)})
+}
+
+// seedContactPage 建「联系我们」单页（zh + en，幂等），地址/电话/邮箱/地图用占位。
+func seedContactPage(ctx context.Context, svc *content.Service) error {
+	if _, err := svc.GetPublishedBySlugLang(ctx, "contact", "contact", "zh"); err == nil {
+		return nil // 已存在
+	}
+	mapEmbed := `<iframe src="https://www.google.com/maps/embed?pb=PLACEHOLDER" width="600" height="380" style="border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
+	e, err := svc.Create(ctx, "contact", "zh", map[string]any{
+		"title":     "联系我们",
+		"slug":      "contact",
+		"address":   "中国 · 示例省示例市示例路 1 号",
+		"phone":     "+86 000 0000 0000",
+		"email":     "info@example.com",
+		"hours":     "周一至周五 9:00 - 18:00",
+		"map_embed": mapEmbed,
+	}, 0)
+	if err != nil {
+		return fmt.Errorf("创建联系我们页: %w", err)
+	}
+	if err := svc.SetStatus(ctx, e.Content.ID, "published"); err != nil {
+		return err
+	}
+	te, err := svc.CreateTranslation(ctx, "contact", "en", e.Content.ContentID, map[string]any{
+		"title":     "Contact Us",
+		"slug":      "contact",
+		"address":   "1 Example Road, Example City, China",
+		"phone":     "+86 000 0000 0000",
+		"email":     "info@example.com",
+		"hours":     "Mon - Fri 9:00 - 18:00",
+		"map_embed": mapEmbed,
+	}, content.Actor{UserID: 0, IsModerator: true})
+	if err != nil {
+		return fmt.Errorf("创建联系我们页英文: %w", err)
+	}
+	return svc.SetStatus(ctx, te.Content.ID, "published")
 }
 
 // firstSentence 取正文第一句作为摘要（剥 HTML 标签的简化版）。

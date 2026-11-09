@@ -1,0 +1,24 @@
+{{define "head"}}
+<link rel="stylesheet" href="{{asset "/css/main.css"}}">
+{{end}}
+{{define "body"}}
+{{template "nav" .}}
+<header class="page-header contact-header">
+  <h1 class="page-title">{{.Entry.Content.Title}}</h1>
+</header>
+<main class="container contact-page" style="padding-top:40px;padding-bottom:64px">
+  <div class="contact-grid">
+    <div class="contact-info">
+      {{if .Entry.Fields.address}}<div class="contact-item"><h3>{{t $.Lang "contact_address"}}</h3><p>{{.Entry.Fields.address}}</p></div>{{end}}
+      {{if .Entry.Fields.phone}}<div class="contact-item"><h3>{{t $.Lang "contact_phone"}}</h3><p>{{.Entry.Fields.phone}}</p></div>{{end}}
+      {{if .Entry.Fields.email}}<div class="contact-item"><h3>{{t $.Lang "contact_email"}}</h3><p>{{.Entry.Fields.email}}</p></div>{{end}}
+      {{if .Entry.Fields.hours}}<div class="contact-item"><h3>{{t $.Lang "contact_hours"}}</h3><p>{{.Entry.Fields.hours}}</p></div>{{end}}
+    </div>
+    <div class="contact-map">
+      {{if .Entry.Fields.map_embed}}{{raw .Entry.Fields.map_embed}}{{else}}<div class="contact-map-placeholder">{{t $.Lang "contact_map_placeholder"}}</div>{{end}}
+    </div>
+  </div>
+</main>
+{{template "footer" .}}
+<script src="{{asset "/js/main.js"}}"></script>
+{{end}}

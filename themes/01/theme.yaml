@@ -1,0 +1,27 @@
+name: default
+version: 1.0.0
+templates:
+  index: templates/index.html
+  list: templates/list.html
+  single: templates/single.html
+partials:
+  - templates/partials/nav.html
+  - templates/partials/footer.html
+type_map:
+  article: single
+  page: single
+fields:
+  - text
+  - textarea
+  - richtext
+  - image
+  - slug
+  - date
+  - datetime
+  - boolean
+  - number
+  - select
+  - multiselect
+locales:
+  zh: locales/zh.yaml
+  en: locales/en.yaml

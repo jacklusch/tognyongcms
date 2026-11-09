@@ -1,0 +1,41 @@
+{{define "head"}}
+<link rel="stylesheet" href="{{asset "/css/main.css"}}">
+{{end}}
+{{define "body"}}
+{{template "nav" .}}
+<header class="page-header">
+  <h1 class="page-title">{{if eq .TypeName "category"}}{{.EntryCategory}}{{else if eq .TypeName "article"}}{{t $.Lang "products"}}{{else}}{{.TypeName}}{{end}}</h1>
+</header>
+<main class="container" style="padding-bottom:64px">
+  {{if .SubCategories}}
+  <div class="sub-categories">
+    {{range .SubCategories}}<a class="sub-cat" href="{{.URL}}">{{.Name}}</a>{{end}}
+  </div>
+  {{end}}
+  {{if .Items}}
+  <div class="grid" style="padding-top:32px">
+    {{range .Items}}
+    <a class="card" href="{{url $.Lang .}}">
+      {{if .Fields.cover}}<img src="{{media .Fields.cover}}" alt="{{.Content.Title}}">{{else}}<div class="card-img-placeholder"></div>{{end}}
+      <div class="card-body">
+        <h3>{{.Content.Title}}</h3>
+        {{if .Fields.excerpt}}<p>{{.Fields.excerpt}}</p>{{end}}
+        <span class="more">{{t $.Lang "view_more"}} →</span>
+      </div>
+    </a>
+    {{end}}
+  </div>
+  {{else}}
+  <p style="padding:32px 0">{{t $.Lang "no_content"}}</p>
+  {{end}}
+  {{if ne $.TypeName "category"}}
+  <nav class="pager">
+    {{range pages $.Total $.PerPage}}
+      {{if eq . $.Page}}<span class="current">{{.}}</span>{{else}}<a href="{{pagerURL $ .}}">{{.}}</a>{{end}}
+    {{end}}
+  </nav>
+  {{end}}
+</main>
+{{template "footer" .}}
+<script src="{{asset "/js/main.js"}}"></script>
+{{end}}

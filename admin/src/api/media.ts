@@ -14,7 +14,7 @@ export interface MediaItem {
 }
 
 export const listMedia = (page = 1, perPage = 50) =>
-  request<{ items: MediaItem[] }>(`/media?page=${page}&per_page=${perPage}`)
+  request<{ items: MediaItem[]; total: number }>(`/media?page=${page}&per_page=${perPage}`)
 
 // uploadMedia 走独立 fetch：FormData 由 fetch 自动带 multipart boundary，
 // 不能走 client.ts 的 JSON 序列化逻辑。
@@ -35,3 +35,6 @@ export const uploadMedia = async (file: File): Promise<{ key: string; url: strin
 }
 
 export const deleteMedia = (id: number) => request<{ deleted: number }>(`/media/${id}`, { method: 'DELETE' })
+
+export const batchDeleteMedia = (ids: number[]) =>
+  request<{ deleted: number }>('/media/batch-delete', { method: 'POST', body: { ids } })
