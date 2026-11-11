@@ -38,7 +38,7 @@ a{color:inherit;text-decoration:none}
 .container{max-width:1200px;margin:0 auto;padding:0 24px}
 /* Hero */
 .hero{position:relative;min-height:480px;display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,.55)),var(--dark)}
-.hero .hero-bg{position:absolute;inset:0;background:url("/themes/default/img/hero.png") center/cover no-repeat;z-index:0}
+.hero .hero-bg{position:absolute;inset:0;background:url("/themes/default/img/hero.jpg") center/cover no-repeat;z-index:0}
 .hero .hero-bg::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.4)}
 .hero>*{position:relative;z-index:1}
 .hero h1{font-size:clamp(40px,6vw,64px);font-weight:900;letter-spacing:2px;text-transform:uppercase;max-width:900px;margin:0 auto}
@@ -118,21 +118,39 @@ a{color:inherit;text-decoration:none}
   .section{padding:40px 24px}
 }
 
-/* 右下角悬浮联系图标（WhatsApp / 微信） */
-.floating-contact{position:fixed;right:24px;bottom:24px;z-index:100;display:flex;flex-direction:column;align-items:flex-end;gap:12px}
+/* 右下角悬浮联系图标（电话 / 邮箱 / WhatsApp / 微信） */
+.floating-contact{position:fixed;right:24px;bottom:64px;z-index:100;display:flex;flex-direction:column;align-items:flex-end;gap:12px}
 .float-btn{width:52px;height:52px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.22);transition:transform .2s;background:transparent;padding:0}
 .float-btn img{width:100%;height:100%;object-fit:cover;display:block}
 .float-btn:hover{transform:scale(1.08)}
-.float-wechat{background:transparent;border:none;cursor:pointer}
+.float-email,.float-phone{background:var(--red);color:#fff}
+.float-whatsapp{background:#25D366;color:#fff}
+.float-wechat{background:#07C160;color:#fff;border:none;cursor:pointer}
+.float-email svg,.float-phone svg,.float-whatsapp svg,.float-wechat svg{width:26px;height:26px;display:block}
+.float-email:hover,.float-phone:hover{background:#c4171c}
+.float-whatsapp:hover{background:#1fbe5a}
+.float-wechat:hover{background:#06ad56}
+/* 邮箱/电话悬浮提示：白底黑字，滑入动画 */
+.float-email-wrap,.float-phone-wrap{position:relative}
+.float-email-tip,.float-phone-tip{position:absolute;right:64px;top:50%;transform:translate(10px,-50%);background:#fff;color:#111;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-size:14px;font-weight:600;line-height:1;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.16);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .22s ease,transform .22s ease,visibility .22s}
+.float-email-tip::after,.float-phone-tip::after{content:"";position:absolute;left:100%;top:50%;transform:translateY(-50%);border:6px solid transparent;border-left-color:#fff}
+.float-email-wrap:hover .float-email-tip,.float-phone-wrap:hover .float-phone-tip{opacity:1;visibility:visible;transform:translate(0,-50%)}
 .float-wechat-wrap{position:relative}
-.float-wechat-pop{display:none;position:absolute;right:64px;bottom:0;width:200px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.16);text-align:center}
-.float-wechat-pop.open{display:block}
+.float-wechat-pop{position:absolute;right:64px;bottom:0;width:200px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.16);text-align:center;transform-origin:100% 100%;opacity:0;visibility:hidden;pointer-events:none;transform:translate(10px,6px) scale(.97);transition:opacity .22s ease,transform .22s ease,visibility .22s}
+.float-wechat-wrap:hover .float-wechat-pop,.float-wechat-pop.open{opacity:1;visibility:visible;pointer-events:auto;transform:translate(0,0) scale(1)}
 .float-wechat-pop img{width:170px;height:170px;object-fit:contain;display:block;margin:0 auto}
 .float-wechat-pop span{display:block;font-size:13px;color:var(--muted);margin-top:10px}
+/* 电话/邮件点击兜底提示 */
+.float-toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,16px);max-width:calc(100vw - 48px);background:#fff;color:#111;border:1px solid var(--line);border-radius:10px;padding:12px 16px;font-size:14px;line-height:1.6;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.18);z-index:120;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .25s ease,transform .25s ease,visibility .25s}
+.float-toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
+.float-toast strong{color:var(--red);font-weight:700;word-break:break-all}
+.float-toast-hint{color:var(--muted);font-size:13px}
+.float-toast a{color:var(--red);font-weight:600;text-decoration:underline;pointer-events:auto}
 @media(max-width:600px){
-  .floating-contact{right:16px;bottom:16px;gap:10px}
+  .floating-contact{right:16px;bottom:56px;gap:10px}
   .float-btn{width:46px;height:46px}
   .float-btn{width:46px;height:46px}
   .float-wechat-pop{right:58px;width:180px}
   .float-wechat-pop img{width:150px;height:150px}
+  .float-email-tip,.float-phone-tip{right:58px;font-size:13px;padding:7px 10px}
 }

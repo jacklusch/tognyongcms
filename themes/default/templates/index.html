@@ -6,8 +6,8 @@
 <header class="hero">
   <div class="hero-bg"></div>
   <div>
-    <h1>{{t $.Lang "hero_title"}}</h1>
-    <p>{{.Site.Description}}</p>
+    {{with t $.Lang "hero_title"}}<h1>{{.}}</h1>{{end}}
+    {{with t $.Lang "hero_sub"}}<p>{{.}}</p>{{end}}
     <a class="cta" href="{{home $.Lang}}category/products">{{t $.Lang "learn_more"}}</a>
   </div>
 </header>
